@@ -1,0 +1,162 @@
+{% extends "site/_base.html" %}
+{% from "_macros.html" import cites, claim_list, signed with context %}
+{% block title %}Oro{% endblock %}
+{% block description %}Oro: análisis semanal, estrategia de seguimiento de tendencia diaria y factores macro que le afectan.{% endblock %}
+{% block content %}
+{% set c = gold_card %}{% set s = c.snapshot if c else none %}{% set p = s.prices if s else none %}{% set a = c.analysis if c else none %}{% set d = c.decision if c else none %}
+<div class="page-head">
+  <div class="eyebrow">Materias primas · refugio</div>
+  <h1>Oro</h1>
+  <div class="updated">
+    <span>{{ gold_strategy.ticker if gold_strategy else (s.ticker if s else '') }}{% if gold_strategy and gold_strategy.isin %} · {{ gold_strategy.isin }}{% endif %}</span>
+    <span>Análisis <b>{{ date or '—' }}</b> (semanal)</span>
+    {% if gold_strategy and gold_strategy.last_date %}<span>Estrategia y factores <b>{{ gold_strategy.last_date }}</b> (diario)</span>{% endif %}
+  </div>
+  <nav class="small" style="margin-top:10px; display:flex; gap:14px; flex-wrap:wrap"><a href="#analisis">1 · Análisis</a><a href="#estrategia">2 · Estrategia de tendencia</a><a href="#factores">3 · Factores macro</a></nav>
+</div>
+
+<!-- ================= 1. ANÁLISIS ================= -->
+<div class="section-head" id="analisis"><div><div class="eyebrow">1 · Análisis semanal</div><h2>Datos e indicadores</h2></div></div>
+{% if not c %}
+<div class="panel"><p class="na" style="margin:0">El último análisis semanal no incluye el oro.</p></div>
+{% else %}
+<article class="card">
+  <div class="card-head">
+    <div>
+      <h3 style="margin:0; font-size:1.05rem">{{ s.name }}</h3>
+      <div class="ticker">{{ s.ticker }} · {{ s.asset_class }} · datos {{ s.quality.level | term | lower }}</div>
+      {% if d %}<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        <span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span>
+        {% if a %}<span class="small muted">convicción {{ a.conviction | level_label_f | lower }}</span>{% endif %}
+        {% if change %}<span class="chg {{ change.direction }}" title="Respecto al análisis del {{ change.date }}">{% if change.score_from is not none and change.score_from != change.score_to %}puntuación {{ change.score_from }}→{{ change.score_to }}{% elif change.action_from == change.action_to %}= sin cambios desde el {{ change.date }}{% endif %}{% if change.action_from and change.action_from != change.action_to %} · {{ change.action_from | action_label | lower }}→{{ change.action_to | action_label | lower }}{% endif %}</span>{% endif %}
+      </div>{% endif %}
+    </div>
+    {{ score_ring(a.opportunity_score if a else none) }}
+  </div>
+  {% if p %}<div style="margin-top:12px">{{ sparkline(p.sparkline, s.name ~ ' · 12 meses (' ~ p.currency ~ ')', 360, 56) }}</div>{% endif %}
+
+  {% if a %}
+  <div class="sig">
+    <div><div class="label">Valuación</div><div class="v">{{ a.valuation | term }}</div></div>
+    <div><div class="label">Momentum</div><div class="v">{{ a.momentum | term }}</div></div>
+    <div><div class="label">Sentimiento</div><div class="v">{{ a.sentiment | term }}</div></div>
+  </div>
+  <p>{{ a.summary }}</p>
+  <div class="two">
+    <div>{% if a.key_risks %}<h3>Riesgos</h3><ul class="small">{% for r in a.key_risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}</div>
+    <div>
+      {% if d and d.conditions %}<h3>Condiciones de entrada</h3><ul class="small">{% for x in d.conditions %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if d and d.invalidation %}<h3>Invalidación de la tesis</h3><ul class="small">{% for x in d.invalidation %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+  <details><summary>Justificación de las señales</summary>
+    <p class="small"><b>Valuación:</b> {{ a.valuation_rationale }}</p>
+    <p class="small"><b>Momentum:</b> {{ a.momentum_rationale }}</p>
+    <p class="small"><b>Sentimiento:</b> {{ a.sentiment_rationale }}</p>
+    {% if a.claims %}{{ claim_list(a.claims) }}{% endif %}
+  </details>
+  {% else %}
+  <p class="na">Sin análisis cualitativo esta semana.</p>
+  {% endif %}
+
+  <details open><summary>Datos objetivos</summary>
+  {% if p %}
+    <table class="data">
+      <tr><th>Precio ({{ p.last_date }})</th><td class="num">{{ p.last_price | num }} {{ p.currency }}</td></tr>
+      {% for k in ['1m','3m','6m','12m'] %}
+      <tr><th>Rent. {{ k }} ({{ p.currency }}{% if p.currency != p.report_currency %} / {{ p.report_currency }}{% endif %})</th><td class="num">{{ signed(p.returns_pct[k]) }}{% if p.currency != p.report_currency %} / {{ signed(p.returns_report_ccy_pct[k]) }}{% endif %}</td></tr>
+      {% endfor %}
+      <tr><th>SMA 50 / SMA 200</th><td class="num">{{ p.sma50 | num }} / {{ p.sma200 | num }}</td></tr>
+      <tr><th>Por encima SMA 50 / 200</th><td class="num">{{ p.above_sma50 | yesno }} / {{ p.above_sma200 | yesno }}</td></tr>
+      <tr><th>Máximo 12m ({{ p.recent_high_date or '—' }})</th><td class="num">{{ p.recent_high | num }}</td></tr>
+      <tr><th>Drawdown actual / máx. 12m</th><td class="num">{{ signed(p.drawdown_from_recent_high_pct) }} / {{ signed(p.max_drawdown_window_pct) }}</td></tr>
+      <tr><th>Volatilidad anualizada</th><td class="num">{{ p.volatility_annualized_pct | pct(false) }}</td></tr>
+      {% if p.benchmark_ticker %}<tr><th>vs {{ p.benchmark_ticker }} (3m / 12m)</th><td class="num">{{ signed(p.relative_vs_benchmark_pp['3m'], ' pp') }} / {{ signed(p.relative_vs_benchmark_pp['12m'], ' pp') }}</td></tr>{% endif %}
+      <tr><th>Tendencia cuantitativa</th><td class="num">{{ p.quant_trend | term }}</td></tr>
+    </table>
+    {% if s.quality.issues %}<p class="small muted">Limitaciones: {{ s.quality.issues | join('; ') }}</p>{% endif %}
+  {% else %}
+    <p class="na">{{ s.error }}</p>
+  {% endif %}
+  </details>
+  <details><summary>Fuentes ({{ c.sources | length }})</summary>
+  {% if c.sources %}
+    <ul class="small">{% for src in c.sources %}<li><span class="mono faint">[{{ src.id }}]</span> <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.title }}</a> <span class="faint">· {{ src.published_date or 'sin fecha' }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="na">Sin fuentes web.</p>{% endif %}
+  </details>
+</article>
+{% endif %}
+
+<!-- ================= 2. ESTRATEGIA ================= -->
+<div class="section-head" id="estrategia"><div><div class="eyebrow">2 · Estrategia experimental</div><h2>Seguimiento de tendencia</h2></div><span class="small faint">Reglas deterministas en Python · se actualiza cada día tras el cierre de Xetra</span></div>
+{% if gold_strategy %}
+{% set prm = gold_strategy.audit.params if gold_strategy.audit else {} %}
+{% if prm %}
+<div class="panel small">
+  <div class="label">Cómo funciona</div>
+  <ol style="margin-top:6px">
+    <li><b>Filtro de tendencia.</b> Solo se buscan compras si el cierre está por encima de la media de las últimas {{ prm.filter_sma }} sesiones.</li>
+    <li><b>Entrada por ruptura.</b> Señal cuando el cierre supera el máximo de las {{ prm.entry_breakout }} sesiones anteriores; la orden se ejecutaría en la apertura siguiente.</li>
+    <li><b>Stop inicial por volatilidad.</b> Entrada − {{ prm.atr_multiple }}×ATR{{ prm.atr_window }} (rango medio diario).</li>
+    <li><b>Tamaño por riesgo.</b> Se arriesga como máximo un {{ prm.risk_pct }}% del capital por operación: cuanto más lejos el stop, menor la posición.</li>
+    <li><b>Salida.</b> Cuando el cierre toca el stop inicial o pierde el mínimo de las {{ prm.exit_low }} sesiones previas.</li>
+  </ol>
+  <p class="faint" style="margin:6px 0 0">Las estrategias de tendencia aciertan pocas veces (30-40% es normal) y ganan con unas pocas operaciones grandes.</p>
+</div>
+{% endif %}
+{% with s = gold_strategy, public = true %}{% include "_trend.html" %}{% endwith %}
+{% else %}
+<div class="panel"><p class="na" style="margin:0">No hay ninguna estrategia de tendencia configurada para el oro.</p></div>
+{% endif %}
+
+<!-- ================= 3. FACTORES ================= -->
+<div class="section-head" id="factores"><div><div class="eyebrow">3 · Contexto macro</div><h2>Factores que suelen mover el oro</h2></div><span class="small faint">Solo informativo: no cambia las señales de la estrategia</span></div>
+{% if not factors or factors.error %}
+<div class="panel"><p class="na" style="margin:0">Estudio de factores no disponible{% if factors %}: {{ factors.error }}{% endif %}.</p></div>
+{% else %}
+<div class="panel">
+  <p style="margin:0">Qué hizo el oro en EUR, históricamente, en los meses en que cada factor venía subiendo o bajando, y qué está haciendo cada factor ahora. Datos de {{ factors.since }} a {{ factors.until }} ({{ factors.months }} meses). En cualquier mes, el oro subió de media un {{ signed(factors.base_avg_3m_pct) }} en los 3 meses siguientes, con subidas el {{ factors.base_up_share_3m_pct | pct(false) }} de las veces: esa es la referencia para comparar.</p>
+  <div class="sum-bar">
+    <div><div class="label">Favorecen al oro</div><div class="v pos">{{ factors.favorable }}</div></div>
+    <div><div class="label">Lo perjudican</div><div class="v neg">{{ factors.unfavorable }}</div></div>
+    <div><div class="label">Sin efecto claro</div><div class="v">{{ factors.neutral }}</div></div>
+    <div><div class="label">Sin datos suficientes</div><div class="v faint">{{ factors.factors | length - factors.favorable - factors.unfavorable - factors.neutral }}</div></div>
+  </div>
+</div>
+<div class="panel" style="padding:0; overflow:hidden; margin-top:12px">
+  <div class="table-wrap"><table class="factors">
+    <tr>
+      <th>Factor</th><th class="num">Actual</th><th class="num">Últimos 3m</th><th>12 meses</th>
+      <th class="num">Si sube: oro a 3m</th><th class="num">Si baja: oro a 3m</th><th class="num" title="Solidez estadística de la diferencia">Solidez (t)</th>
+      <th class="num" title="Correlación de las variaciones semanales del último año">Corr. 52s</th><th>Lectura actual</th>
+    </tr>
+    {% for f in factors.factors %}
+    <tr class="factor-row">
+      <td><b>{{ f.name }}</b><br><span class="small faint mono">{{ f.source }}</span></td>
+      {% if f.error %}
+      <td colspan="8" class="na">No disponible: {{ f.error }}</td>
+      {% else %}
+      <td class="num" data-label="Actual">{{ f.value | num }}{{ f.unit }}<br><span class="small faint">{{ f.as_of }}</span></td>
+      <td class="num" data-label="Últimos 3m">{{ f.change_3m | factor_change(f.change_unit) }}<br><span class="small {{ {'up': 'pos', 'down': 'neg'}.get(f.direction, 'faint') }}">{{ f.direction | factor_direction }}</span></td>
+      <td data-label="12 meses">{{ sparkline(f.sparkline, f.name ~ ' · 12 meses', 110, 30) }}</td>
+      {% for r in [f.rising, f.falling] %}
+      <td class="num" data-label="{{ 'Si sube: oro a 3m' if loop.first else 'Si baja: oro a 3m' }}">{% if r.months %}{{ signed(r.avg_return_3m_pct) }}<br><span class="small faint">sube {{ r.up_share_3m_pct | pct(false) }} · {{ r.months }} m</span>{% else %}<span class="na">—</span>{% endif %}</td>
+      {% endfor %}
+      <td class="num" data-label="Solidez (t)">{{ '%+.1f' | format(f.t_stat) if f.t_stat is not none else '—' }}</td>
+      <td class="num" data-label="Corr. 52s">{{ '%+.2f' | format(f.corr_52w) if f.corr_52w is not none else '—' }}</td>
+      <td data-label="Lectura actual"><span class="pill sig-{{ f.signal }}">{{ f.signal | factor_signal }}</span>{% if f.edge_3m_pp is not none and f.signal != 'neutral' %}<br><span class="small faint">{{ '%+.1f' | format(f.edge_3m_pp) }} pp frente al régimen contrario</span>{% endif %}</td>
+      {% endif %}
+    </tr>
+    <tr class="factor-sub">
+      <td colspan="9" class="usual"><span class="faint">Relación habitual:</span> {{ f.usual }}{% if f.observed_sign is not none and f.observed_sign != 0 and f.observed_sign != f.usual_sign %} <span class="mismatch">⚠ Los datos muestran lo contrario en este periodo.</span>{% elif f.observed_sign == 0 %} <span class="faint">· Los datos no la confirman con claridad.</span>{% endif %}{% if f.note %} <span class="faint">· {{ f.note }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">«Si sube / si baja»: rentabilidad media del oro en EUR en los 3 meses siguientes a un periodo de 3 meses en que el factor subió o bajó, % de veces que el oro subió y nº de meses de la muestra. «pb» = puntos básicos (0,01 puntos porcentuales).</p>
+</div>
+<details class="panel" style="margin-top:12px"><summary>Cómo se calcula y limitaciones</summary>
+  <ul class="small">{% for m in factors.method %}<li>{{ m }}</li>{% endfor %}</ul>
+  <p class="small faint" style="margin:0">Precio del oro: {{ factors.price_basis }}. Generado {{ factors.generated_at }}.</p>
+</details>
+{% endif %}
+{% endblock %}

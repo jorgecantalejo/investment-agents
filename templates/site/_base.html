@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %} · Análisis de mercado</title>
+<meta name="description" content="{% block description %}Análisis de mercado semanal: régimen macro, indicadores y activos.{% endblock %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{% include "_styles.html" %}
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html" style="color:var(--text)"><span class="brand-mark"></span>Análisis de mercado</a>
+    <nav class="nav site-nav">{% for href, label in nav %}<a href="{{ href }}"{% if href == page %} class="active" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+  </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+
+<div class="panel disclaimer" style="margin-top:24px">
+  <b>Aviso importante:</b> esta web se genera automáticamente con fines informativos y educativos. No constituye
+  asesoramiento financiero ni una recomendación de compra o venta: no tiene en cuenta la situación, los objetivos ni la
+  tolerancia al riesgo de nadie. Los datos pueden contener errores o retrasos y los análisis de IA pueden equivocarse.
+  Las rentabilidades pasadas no garantizan rentabilidades futuras.
+</div>
+<footer>Generado {{ generated_at }}{% if run %} · análisis {{ run.run_id }}{% endif %} · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
+</main>
+</body>
+</html>

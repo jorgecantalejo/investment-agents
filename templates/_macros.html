@@ -1,0 +1,44 @@
+{# Macros compartidas por el informe y la web. Importar con: {% from "_macros.html" import ... with context %} #}
+{% macro cites(ids) %}{% for sid in ids %}{% if sid in source_map %}<a class="cite" href="{{ source_map[sid].url }}" target="_blank" rel="noopener" title="{{ source_map[sid].title }} ({{ source_map[sid].published_date or 'sin fecha' }})">[{{ sid }}]</a>{% endif %}{% endfor %}{% endmacro %}
+{% macro claim_list(claims) %}
+<ul>
+{% for c in claims %}
+  <li><span class="tag {{ 'tag-fact' if c.kind == 'fact' else '' }}">{{ 'hecho' if c.kind == 'fact' else 'interpretación' }}</span>{{ c.text }}{{ cites(c.source_ids) }}</li>
+{% endfor %}
+</ul>
+{% endmacro %}
+{% macro signed(v, suffix='%', digits=2) %}{% if v is none %}<span class="na">insufficient_data</span>{% else %}<span class="{{ v | sign_class }}">{{ ('%+.' ~ digits ~ 'f') | format(v) }}{{ suffix }}</span>{% endif %}{% endmacro %}
+{% macro fg_card(ind, heading) %}
+  <div class="panel">
+    <div class="label">{{ heading }}</div>
+    <div class="gauge-card">
+      {{ gauge(ind.value if ind else none, heading) }}
+      <div>
+        {% if ind and ind.value is not none %}
+          <div class="big">{{ '%.0f' | format(ind.value) }}<small> /100</small></div>
+          <div class="band">{{ fg_label(ind.value) }}</div>
+          <div class="prev">{% for k, lbl in [('1w', '1 sem'), ('1m', '1 mes'), ('1y', '1 año')] %}{% if ind.previous.get(k) is not none %}<span>{{ lbl }} <b>{{ '%.0f' | format(ind.previous[k]) }}</b></span>{% endif %}{% endfor %}</div>
+        {% else %}
+          <div class="na">insufficient_data</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="small faint" style="margin-top:8px">{{ ind.source if ind else 'Sin fuente' }}{% if ind and ind.as_of %} · {{ ind.as_of }}{% endif %}</div>
+  </div>
+{% endmacro %}
+{% macro kpi(ind, mode) %}
+  <div class="panel kpi">
+    <div class="label">{{ ind.name if ind else '—' }}</div>
+    {% if ind and ind.value is not none %}
+      {% set p = ind.previous.get('1m') %}
+      <div class="value">{{ '%.2f' | format(ind.value) }}{{ ind.unit }}</div>
+      <div class="delta">
+        {% if p is not none %}{% if mode == 'bp' %}{{ signed((ind.value - p) * 100, ' pb', 0) }}{% elif mode == 'pts' %}{{ signed(ind.value - p, ' pts') }}{% else %}{{ signed((ind.value / p - 1) * 100) }}{% endif %} <span class="faint">vs hace 1 mes</span>
+        {% else %}<span class="na">insufficient_data</span>{% endif %}
+      </div>
+      <div class="hint">{{ ind.note }}</div>
+    {% else %}
+      <div class="value na">insufficient_data</div>
+    {% endif %}
+  </div>
+{% endmacro %}

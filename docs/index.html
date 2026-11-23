@@ -1,23 +1,724 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Análisis de mercado</title>
+<title>Mercado · Análisis de mercado</title>
+<meta name="description" content="Análisis de mercado semanal: régimen macro, indicadores y activos.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: light dark; --bg: #0a0e14; --text: #e6e9ef; --muted: #8e98aa; }
-  @media (prefers-color-scheme: light) { :root { --bg: #f7f8fa; --text: #141a24; --muted: #5d6778; } }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
-    font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { padding: 16px; text-align: center; }
-  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 6px; }
-  p { color: var(--muted); margin: 0; }
-</style>
-</head>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e14; --panel: #10161f; --panel-2: #151c28; --border: #222b3a; --border-strong: #2e394b;
+    --text: #e6e9ef; --muted: #8e98aa; --faint: #5d6778;
+    --accent: #3987e5; --accent-soft: rgba(57,135,229,.14); --cyan: #33c3d6;
+    --pos: #2fbf71; --neg: #e5534b; --warn: #fab219;
+    --pos-soft: rgba(47,191,113,.13); --neg-soft: rgba(229,83,75,.13);
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --topbar: rgba(10,14,20,.92); --hover: rgba(255,255,255,.018); --hit: rgba(255,255,255,.06);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --border: #dde2ea; --border-strong: #c5cdd8;
+      --text: #141a24; --muted: #566072; --faint: #7d8796;
+      --accent: #2463c7; --accent-soft: rgba(36,99,199,.10); --cyan: #0b8798;
+      --pos: #16834a; --neg: #c8362e; --warn: #a86b00;
+      --pos-soft: rgba(22,131,74,.12); --neg-soft: rgba(200,54,46,.10);
+      --topbar: rgba(246,247,249,.92); --hover: rgba(0,0,0,.025); --hit: rgba(0,0,0,.05);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; word-break: break-word; }
+  a:hover { text-decoration: underline; }
+  main { max-width: 1240px; margin: 0 auto; padding: 0 16px 40px; }
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; }
+  h3 { font-size: .95rem; margin: 14px 0 6px; }
+  .mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: .82rem; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); }
+  .na { color: var(--faint); font-family: var(--mono); font-size: .78em; }
+  ul, ol { padding-left: 18px; margin: 6px 0; } li { margin: 3px 0; }
+
+  /* Barra superior */
+  .topbar { position: sticky; top: 0; z-index: 10; background: var(--topbar); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .topbar-inner { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .brand-mark { width: 22px; height: 22px; border-radius: 5px; background: linear-gradient(135deg, var(--accent), var(--cyan)); }
+  .meta { display: flex; gap: 4px 16px; flex-wrap: wrap; color: var(--muted); font: 500 .74rem var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .meta b { color: var(--text); font-weight: 500; }
+  .nav { margin-left: auto; display: flex; gap: 14px; font-size: .8rem; }
+  .nav a { color: var(--muted); } .nav a:hover { color: var(--text); text-decoration: none; }
+
+  /* Secciones y paneles */
+  .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 28px 0 12px; }
+  .eyebrow { font: 500 .7rem var(--mono); color: var(--cyan); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .label { font: 500 .68rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+
+  /* Cabecera: medidores */
+  .hero { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); }
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin-top: 12px; }
+  .gauge-card { display: grid; grid-template-columns: 132px 1fr; gap: 14px; align-items: center; margin-top: 8px; }
+  .gauge { width: 132px; height: auto; display: block; }
+  .gauge-needle { stroke: var(--text); } .gauge-hub { fill: var(--text); }
+  .big { font: 600 2rem/1.1 var(--sans); letter-spacing: -.02em; }
+  .big small { font-size: .85rem; color: var(--muted); font-weight: 500; letter-spacing: 0; }
+  .band { font-weight: 600; font-size: .9rem; margin-top: 2px; }
+  .prev { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font: .72rem var(--mono); color: var(--muted); }
+  .prev b { color: var(--text); font-weight: 500; }
+  .thermo { margin-top: 14px; }
+  .thermo-track { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--pos) 0%, var(--warn) 50%, var(--neg) 100%); }
+  .thermo-mark { position: absolute; top: -5px; width: 4px; height: 20px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--panel); transform: translateX(-2px); }
+  .thermo-scale { display: flex; justify-content: space-between; font: .68rem var(--mono); color: var(--faint); margin-top: 6px; }
+  .kpi { padding: 12px 14px; }
+  .kpi .value { font: 600 1.35rem/1.2 var(--mono); margin-top: 4px; }
+  .kpi .delta { font: .76rem var(--mono); margin-top: 2px; }
+  .kpi .hint { font-size: .74rem; color: var(--faint); margin-top: 6px; line-height: 1.4; }
+
+  /* Régimen */
+  .regime { display: grid; gap: 10px; grid-template-columns: repeat(6, 1fr); margin-top: 12px; }
+  .chip-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; }
+  .chip-tile .v { font-weight: 600; margin-top: 2px; }
+
+  /* Conclusión */
+  .conclusion { margin-top: 12px; display: grid; grid-template-columns: 270px 1fr; padding: 0; overflow: hidden; }
+  .alloc { padding: 16px; border-right: 1px solid var(--border); background: linear-gradient(180deg, var(--accent-soft), transparent 70%); }
+  .alloc .big { margin: 6px 0 2px; }
+  .alloc-bar { height: 6px; border-radius: 3px; background: var(--border-strong); margin-top: 10px; overflow: hidden; }
+  .alloc-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .conclusion-body { padding: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+
+  /* Pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font: 500 .72rem var(--mono); border: 1px solid var(--border-strong); white-space: nowrap; color: var(--text); background: var(--panel-2); }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+  .act-small_extra { border-color: rgba(250,178,25,.45); } .act-small_extra::before { background: var(--warn); }
+  .act-normal_extra, .act-staged_extra { border-color: rgba(47,191,113,.45); } .act-normal_extra::before, .act-staged_extra::before { background: var(--pos); }
+  .lvl-low::before { background: var(--pos); } .lvl-medium::before { background: var(--warn); } .lvl-high::before { background: var(--neg); }
+  .trend-up::before { background: var(--pos); } .trend-down::before { background: var(--neg); } .trend-sideways::before { background: var(--warn); }
+  .score-high { color: var(--pos); } .score-mid { color: var(--warn); } .score-low { color: var(--neg); } .score-na { color: var(--faint); }
+
+  /* Tarjetas resumen */
+  .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .tile { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: var(--text); transition: border-color .15s, transform .15s; }
+  .tile:hover { border-color: var(--accent); transform: translateY(-1px); text-decoration: none; }
+  .tile-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .tile-name { font-weight: 600; } .ticker { font: .74rem var(--mono); color: var(--muted); }
+  .tile-price { font: 600 1.15rem var(--mono); }
+  .tile-rets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .tile-rets div { background: var(--panel-2); border-radius: 6px; padding: 5px 7px; }
+  .tile-rets .r { font: 500 .8rem var(--mono); white-space: nowrap; }
+  .tile-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tile-link { margin-left: auto; font-size: .76rem; color: var(--accent); }
+  .ring { width: 46px; height: 46px; flex: none; }
+  .ring-track { fill: none; stroke: var(--border-strong); stroke-width: 4; }
+  .ring-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
+  .ring-high .ring-fill { stroke: var(--pos); } .ring-mid .ring-fill { stroke: var(--warn); } .ring-low .ring-fill { stroke: var(--neg); }
+  .ring-text { fill: var(--text); font: 600 15px var(--sans); }
+  .spark { width: 100%; height: 44px; display: block; }
+  .card .spark { height: 56px; }
+  .spark-up .spark-line { stroke: var(--pos); } .spark-up .spark-area { fill: var(--pos-soft); } .spark-up .spark-dot { fill: var(--pos); }
+  .spark-down .spark-line { stroke: var(--neg); } .spark-down .spark-area { fill: var(--neg-soft); } .spark-down .spark-dot { fill: var(--neg); }
+  .spark-dot { stroke: var(--panel); stroke-width: 2; }
+  .spark-empty { height: 44px; display: grid; place-items: center; color: var(--faint); font: .72rem var(--mono); border: 1px dashed var(--border); border-radius: 6px; }
+
+  /* Tablas */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { font: 500 .67rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; background: var(--panel-2); }
+  tr:last-child td { border-bottom: 0; }
+  tr:hover td { background: var(--hover); }
+  td.num, th.num { text-align: right; white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .compare th, .compare td { padding: 8px 8px; }
+  .compare td:first-child { white-space: nowrap; }
+  .compare td:first-child a { word-break: normal; }
+
+  /* Eventos */
+  .event { display: grid; grid-template-columns: 150px 1fr auto; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .event:first-child { padding-top: 0; } .event:last-child { border-bottom: 0; }
+  .event-date { font: 500 .8rem var(--mono); color: var(--cyan); }
+  .event-date.tbd { color: var(--faint); }
+
+  /* Fichas */
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; scroll-margin-top: 70px; }
+  .card:target { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .sig { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .sig > div { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; }
+  .sig .v { font-weight: 600; margin-top: 2px; }
+  details { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+  summary { cursor: pointer; color: var(--muted); font: 500 .74rem var(--mono); text-transform: uppercase; letter-spacing: .05em; }
+  summary:hover { color: var(--text); }
+  .data th, .data td { padding: 5px 4px; font-size: .8rem; background: none; text-transform: none; letter-spacing: 0; font-family: var(--sans); color: var(--text); white-space: normal; }
+  .data th { color: var(--muted); font-weight: 400; }
+  .data td.num { font-family: var(--mono); }
+  .tag { font: 500 .62rem var(--mono); padding: 1px 6px; border-radius: 4px; background: var(--panel-2); color: var(--muted); margin-right: 6px; text-transform: uppercase; border: 1px solid var(--border); }
+  .tag-fact { color: var(--cyan); border-color: rgba(51,195,214,.35); }
+  .cite { font: .68rem var(--mono); vertical-align: super; margin-left: 2px; }
+  .back { font: .74rem var(--mono); color: var(--muted); }
+  .accent-l { border-left: 3px solid var(--warn); }
+  .disclaimer { font-size: .8rem; color: var(--muted); line-height: 1.6; }
+  footer { color: var(--faint); font: .7rem var(--mono); text-align: center; padding: 24px 0; }
+
+
+  /* Estrategia de tendencia */
+  .trend { margin-top: 12px; }
+  .trend-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .state { font: 600 1.25rem/1.2 var(--sans); margin-top: 4px; }
+  .st-entrada_pendiente::before, .st-mantener::before { background: var(--pos); }
+  .st-salida_pendiente::before { background: var(--neg); }
+  .st-sin_posicion::before { background: var(--faint); }
+  .checks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .checks > div { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .checks .v { font: 600 1rem var(--mono); margin-top: 2px; }
+  .ok { color: var(--pos); } .ko { color: var(--neg); }
+  .tchart { width: 100%; height: auto; display: block; }
+  .tc-grid { stroke: var(--border); stroke-width: 1; }
+  .tc-zero { stroke: var(--muted); stroke-width: 1; }
+  .tc-tick { stroke: var(--border-strong); }
+  .tc-axis { fill: var(--faint); font: 11px var(--mono); }
+  .tc-band { fill: rgba(142,152,170,.10); }
+  .tc-edge { fill: none; stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; }
+  .tc-close { fill: none; stroke: #3987e5; stroke-width: 2; stroke-linejoin: round; }
+  .tc-sma { fill: none; stroke: #d95926; stroke-width: 2; }
+  .tc-dot { fill: #3987e5; stroke: var(--panel); stroke-width: 2; } .tc-dot-sma { fill: #d95926; stroke: var(--panel); stroke-width: 2; }
+  .tc-stop { stroke: var(--neg); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .tc-label { fill: var(--muted); font: 11px var(--mono); }
+  .tc-in { fill: var(--pos); stroke: var(--panel); stroke-width: 2; }
+  .tc-out { fill: var(--neg); stroke: var(--panel); stroke-width: 2; }
+  .tc-win { fill: var(--pos); } .tc-loss { fill: var(--neg); }
+  .tc-hit { fill: transparent; } .tc-hit:hover { fill: var(--hit); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font: .74rem var(--mono); color: var(--muted); margin: 8px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 0; border-top: 2px solid; display: inline-block; }
+  .sw-band { width: 14px; height: 10px; background: rgba(142,152,170,.22); border: 1px dashed var(--faint); display: inline-block; }
+  .chart-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+
+  /* Web: navegación, cabecera de página y factores macro */
+  .nav a.active { color: var(--text); border-bottom: 2px solid var(--accent); padding-bottom: 2px; }
+  .page-head { margin: 28px 0 4px; }
+  .page-head h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.02em; margin: 2px 0 4px; }
+  .updated { display: flex; flex-wrap: wrap; gap: 4px 16px; font: .74rem var(--mono); color: var(--muted); }
+  .updated b { color: var(--text); font-weight: 500; }
+  .chg { font: 500 .72rem var(--mono); color: var(--muted); white-space: nowrap; }
+  .chg.up { color: var(--pos); } .chg.down { color: var(--neg); }
+  .tile.static { cursor: default; } .tile.static:hover { border-color: var(--border); transform: none; }
+  .sum-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .sum-bar > div { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+  .sum-bar .v { font: 600 1.2rem var(--mono); margin-top: 2px; }
+  .sig-favorable::before { background: var(--pos); } .sig-unfavorable::before { background: var(--neg); }
+  .sig-neutral::before { background: var(--warn); } .sig-insufficient_data::before { background: var(--faint); }
+  .factors td { vertical-align: middle; } .factors .spark { width: 110px; height: 30px; }
+  .factors .factor-row td { border-bottom: 0; padding-bottom: 2px; }
+  .factors .factor-sub td { padding-top: 0; font-size: .76rem; color: var(--text); white-space: normal; }
+  .factors tr.factor-sub:hover td, .factors tr.factor-row:hover td { background: none; }
+  .mismatch { color: var(--warn); font-size: .72rem; }
+  .strategy-tile { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+
+  @media (max-width: 980px) {
+    .hero { grid-template-columns: 1fr 1fr; }
+    .hero > .panel:last-child { grid-column: span 2; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .regime { grid-template-columns: repeat(3, 1fr); }
+    .conclusion { grid-template-columns: 1fr; } .alloc { border-right: 0; border-bottom: 1px solid var(--border); }
+    .nav { display: none; }
+    .nav.site-nav { display: flex; margin-left: 0; width: 100%; overflow-x: auto; gap: 16px; }
+  }
+  @media (max-width: 620px) {
+    main { padding: 0 12px 32px; }
+    .hero { grid-template-columns: 1fr; } .hero > .panel:last-child { grid-column: auto; }
+    .regime { grid-template-columns: repeat(2, 1fr); }
+    .two, .sig { grid-template-columns: 1fr; }
+    .checks { grid-template-columns: 1fr 1fr; }
+    .chart-box { overflow-x: auto; } .chart-box .tchart { min-width: 640px; }
+    .cards { grid-template-columns: 1fr; }
+    .event { grid-template-columns: 1fr; gap: 2px; }
+    .gauge-card { grid-template-columns: 112px 1fr; } .gauge { width: 112px; }
+    .section-head { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .factors, .factors tbody { display: block; }
+    .factors tr:first-child { display: none; }
+    .factors tr.factor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px 12px 6px; }
+    .factors tr.factor-row td { border: 0; padding: 0; text-align: left; white-space: normal; }
+    .factors tr.factor-row td:first-child, .factors tr.factor-row td[colspan] { grid-column: 1 / -1; }
+    .factors td[data-label]::before { content: attr(data-label); display: block; font: 500 .62rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .factors tr.factor-sub { display: block; padding: 0 12px 12px; border-bottom: 1px solid var(--border); }
+    .factors tr.factor-sub td { display: block; border: 0; padding: 0; }
+  }
+  @media print {
+    .topbar { position: static; } .tile:hover { transform: none; }
+  }
+</style></head>
 <body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html" style="color:var(--text)"><span class="brand-mark"></span>Análisis de mercado</a>
+    <nav class="nav site-nav"><a href="index.html" class="active" aria-current="page">Mercado</a><a href="oro.html">Oro</a></nav>
+  </div>
+</header>
 <main>
-<h1>Análisis de mercado</h1>
-<p>Web en construcción. Pronto: análisis macro semanal y páginas por activo.</p>
+<div class="page-head">
+  <div class="eyebrow">Visión de mercado</div>
+  <h1>Análisis macro semanal</h1>
+  <div class="updated">
+    <span>Análisis <b>2026-11-21</b></span>
+<span>Estrategia del oro <b>2026-11-23</b> (diaria)</span><span>Cambios respecto al <b>2026-11-17</b></span>  </div>
+</div>
+
+
+<div class="section-head" id="mercado"><div><div class="eyebrow">Panorama</div><h2>Régimen macroeconómico</h2></div><span class="small faint mono">Datos a 2026-11-21</span></div>
+<div class="hero">
+    <div class="panel">
+    <div class="label">Miedo y codicia · acciones</div>
+    <div class="gauge-card">
+      <svg class="gauge" viewBox="0 0 120 72" role="img" aria-label="Miedo y codicia · acciones"><title>Miedo y codicia · acciones: 10 · Miedo extremo</title><path d="M12.03,58.19 A48,48 0 0 1 24.80,27.36" stroke="#d03b3b" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M27.36,24.80 A48,48 0 0 1 50.71,12.91" stroke="#e9806e" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M54.28,12.34 A48,48 0 0 1 65.72,12.34" stroke="#5b5f6b" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M69.29,12.91 A48,48 0 0 1 92.64,24.80" stroke="#6fa3ee" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M95.20,27.36 A48,48 0 0 1 107.97,58.19" stroke="#3987e5" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><line x1="60" y1="60" x2="29.47" y2="50.40" class="gauge-needle" stroke-width="2.5" stroke-linecap="round"/><circle cx="60" cy="60" r="4" class="gauge-hub"/></svg>
+      <div>
+          <div class="big">10<small> /100</small></div>
+          <div class="band">Miedo extremo</div>
+          <div class="prev"><span>1 sem <b>37</b></span><span>1 mes <b>29</b></span><span>1 año <b>5</b></span></div>
+      </div>
+    </div>
+    <div class="small faint" style="margin-top:8px">CNN Fear &amp; Greed · 2026-11-20</div>
+  </div>
+
+    <div class="panel">
+    <div class="label">Miedo y codicia · cripto</div>
+    <div class="gauge-card">
+      <svg class="gauge" viewBox="0 0 120 72" role="img" aria-label="Miedo y codicia · cripto"><title>Miedo y codicia · cripto: 12 · Miedo extremo</title><path d="M12.03,58.19 A48,48 0 0 1 24.80,27.36" stroke="#d03b3b" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M27.36,24.80 A48,48 0 0 1 50.71,12.91" stroke="#e9806e" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M54.28,12.34 A48,48 0 0 1 65.72,12.34" stroke="#5b5f6b" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M69.29,12.91 A48,48 0 0 1 92.64,24.80" stroke="#6fa3ee" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><path d="M95.20,27.36 A48,48 0 0 1 107.97,58.19" stroke="#3987e5" stroke-width="10" fill="none" stroke-linecap="butt" opacity="1"/><line x1="60" y1="60" x2="30.25" y2="48.22" class="gauge-needle" stroke-width="2.5" stroke-linecap="round"/><circle cx="60" cy="60" r="4" class="gauge-hub"/></svg>
+      <div>
+          <div class="big">12<small> /100</small></div>
+          <div class="band">Miedo extremo</div>
+          <div class="prev"><span>1 sem <b>13</b></span><span>1 mes <b>68</b></span></div>
+      </div>
+    </div>
+    <div class="small faint" style="margin-top:8px">alternative.me · 2026-11-21</div>
+  </div>
+
+  <div class="panel">
+    <div class="label">Riesgo para la renta variable</div>
+      <div style="display:flex; align-items:baseline; gap:10px; margin-top:10px">
+        <div class="big">8<small> /10</small></div>
+        <span class="pill lvl-high">Alto</span>
+      </div>
+      <div class="thermo">
+        <div class="thermo-track"><span class="thermo-mark" style="left: 80%" title="8/10"></span></div>
+        <div class="thermo-scale"><span>0 · bajo</span><span>5</span><span>10 · alto</span></div>
+      </div>
+      <div class="small muted" style="margin-top:12px">Régimen <b>ciclo tardío</b> · confianza media</div>
+  </div>
+</div>
+
+<div class="kpis">
+    <div class="panel kpi">
+    <div class="label">VIX</div>
+      <div class="value">35.89</div>
+      <div class="delta">
+<span class="pos">+18.58 pts</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Volatilidad implícita del S&amp;P 500 a 30 días. &gt;20 tensión, &gt;30 pánico.</div>
+  </div>
+
+    <div class="panel kpi">
+    <div class="label">Bono EE. UU. 10 años</div>
+      <div class="value">4.91%</div>
+      <div class="delta">
+<span class="neg">-21 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Rentabilidad del Tesoro estadounidense a 10 años.</div>
+  </div>
+
+    <div class="panel kpi">
+    <div class="label">Índice dólar (DXY)</div>
+      <div class="value">103.81</div>
+      <div class="delta">
+<span class="pos">+2.04%</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Dólar frente a una cesta de divisas.</div>
+  </div>
+
+    <div class="panel kpi">
+    <div class="label">EUR/USD</div>
+      <div class="value">1.10</div>
+      <div class="delta">
+<span class="neg">-2.18%</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Dólares por euro. Al alza, el euro se aprecia.</div>
+  </div>
+
+</div>
+
+<div class="label" style="margin-top:16px">Datos macro oficiales (FRED) y valuación histórica</div>
+<div class="kpis">
+  <div class="panel kpi">
+    <div class="label">Tipo Fed (efectivo)</div>
+      <div class="value">3.88%</div>
+      <div class="delta">
+<span class="">+0 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Tipo efectivo de los fondos federales de EE. UU.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Tipo BCE (depósito)</div>
+      <div class="value">2.50%</div>
+      <div class="delta">
+<span class="">+0 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Facilidad de depósito del BCE: referencia de los tipos en euros.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Curva EE. UU. 10a-2a</div>
+      <div class="value">0.29%</div>
+      <div class="delta">
+<span class="neg">-4 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Diferencial 10 años menos 2 años. Negativo (curva invertida) ha precedido a recesiones.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Tipo real EE. UU. 10a</div>
+      <div class="value">2.88%</div>
+      <div class="delta">
+<span class="pos">+8 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Rentabilidad del bono ligado a la inflación (TIPS) a 10 años. Alto = financiación cara y presión sobre valoraciones.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Inflación esperada 10a</div>
+      <div class="value">2.15%</div>
+      <div class="delta">
+<span class="neg">-20 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Inflación implícita a 10 años (bono nominal menos TIPS).</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">IPC EE. UU. (interanual)</div>
+      <div class="value">4.08%</div>
+      <div class="delta">
+<span class="pos">+6 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Variación a 12 meses del IPC de EE. UU. (dato mensual).</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">IPCA zona euro (interanual)</div>
+      <div class="value">4.01%</div>
+      <div class="delta">
+<span class="pos">+25 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Variación a 12 meses del IPCA de la zona euro (dato mensual). Objetivo del BCE: 2%.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Paro EE. UU.</div>
+      <div class="value">4.10%</div>
+      <div class="delta">
+<span class="neg">-10 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Tasa de desempleo (dato mensual). Subidas rápidas suelen anticipar recesión.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Diferencial high yield</div>
+      <div class="value">3.52%</div>
+      <div class="delta">
+<span class="pos">+23 pb</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Prima de los bonos de alto rendimiento sobre el Tesoro (ICE BofA). Al alza = estrés crediticio.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">Condiciones financieras (NFCI)</div>
+      <div class="value">-0.48</div>
+      <div class="delta">
+<span class="pos">+0.01 pts</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">Índice de la Fed de Chicago. Negativo = más laxas que la media histórica; positivo = más tensas.</div>
+  </div>
+  <div class="panel kpi">
+    <div class="label">CAPE S&amp;P 500</div>
+      <div class="value">36.44</div>
+      <div class="delta">
+<span class="neg">-4.16 pts</span> <span class="faint">vs hace 1 mes</span>
+      </div>
+      <div class="hint">PER ajustado al ciclo. Percentil 97 desde 1871 (mediana 16.1) y 82 en 30 años (mediana 27.7).</div>
+  </div>
+</div>
+
+<div class="regime">
+  <div class="chip-tile"><div class="label">Régimen</div><div class="v">Ciclo tardío</div></div>
+  <div class="chip-tile"><div class="label">Crecimiento</div><div class="v">Estable</div></div>
+  <div class="chip-tile"><div class="label">Inflación</div><div class="v">Al alza</div></div>
+  <div class="chip-tile"><div class="label">Tipos</div><div class="v">Al alza</div></div>
+  <div class="chip-tile"><div class="label">Liquidez</div><div class="v">Neutral</div></div>
+  <div class="chip-tile"><div class="label">Riesgo global</div><div class="v">Alto</div></div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+  <h3 style="margin-top:0">Resumen de la semana</h3>
+    <p style="margin:0 0 8px">Semana de venta generalizada: el índice global de MSCI cayó un 8,1% en la semana, liderado por tecnología (S18). El miedo y codicia de acciones está en 9,7 y el de cripto en 12 (miedo extremo), con el VIX en 35,89. El entorno macro es de ciclo tardío: inflación al alza (IPC EE. UU. 4,08%, IPCA 4,01%), tipos reales a 10 años en 2,88% y Fed y BCE con sesgo de subidas (S8, S9, S7). El CAPE del S&amp;P 500 (36,44, percentil 96,6) sigue muy exigente. El miedo extremo abre puntos de entrada a largo plazo, pero las señales no son coherentes en casi ningún activo (interpretación). Riesgo global alto: solo se proponen entradas pequeñas en MSCI World y energía, que conservan precio sobre la SMA200 y tendencia cuantitativa alcista; en el resto conviene esperar.</p>
+<ul class="small"><li>Miedo extremo en acciones (9,7) y cripto (12) con VIX en 35,89: posible oportunidad a largo plazo, pero no basta como señal por sí solo (interpretación).</li><li>Valoraciones aún exigentes: CAPE del S&amp;P 500 en 36,44, percentil 96,6 histórico y 82,5 a 30 años; el PER adelantado bajo 18 (S52, S55) solo suaviza parcialmente.</li><li>Inflación al alza y bancos centrales con sesgo de subidas (S8, S9, S7); la reunión del FOMC del 8 y 9 de diciembre es el próximo catalizador (S9).</li><li>Solo MSCI World y energía mantienen precio sobre la SMA200 y tendencia cuantitativa alcista; se limita la entrada a estos dos activos y en tamaño pequeño.</li><li>Oro, Bitcoin, Nasdaq 100, S&amp;P 500 y materias primas cotizan bajo sus medias de 50 y 200 sesiones: esperar estabilización.</li><li>La caída del EUR/USD (1,097 frente a 1,1541 hace un año) ha amortiguado pérdidas en euros; una recuperación del euro restaría rentabilidad (interpretación).</li></ul>    <div class="two">
+      <div>
+        <div class="label">Mejor momento relativo</div>
+<ol class="small"><li>MSCI World</li><li>Energía</li><li>Nasdaq 100</li><li>S&amp;P 500</li><li>Materias primas</li><li>Bitcoin</li><li>Oro</li></ol>      </div>
+      <div>
+        <div class="label">No conviene entrar ahora</div>
+<ul class="small"><li><b>Oro</b>: Tendencia bajista (quant_trend down), precio bajo SMA50 y SMA200, caída del 33,9% desde máximos y valoración desconocida; tipos reales y dólar al alza siguen en contra (S30).</li><li><b>Bitcoin</b>: Caída del 38,03% desde máximos, mínimos de dos años (S35), volatilidad del 44,55% y sin datos de valoración; no hay señales de estabilización.</li><li><b>Materias primas</b>: Precio bajo SMA50 y SMA200, sin valoración y con presión del dólar y de un posible exceso de oferta de crudo (S36, S37).</li><li><b>Nasdaq 100</b>: Caída del 19,84% desde máximos, precio bajo SMA50 y SMA200 y valoración no verificable con percentiles; se supera además el máximo de dos activos con entrada.</li><li><b>S&amp;P 500</b>: CAPE en percentil 96,6, precio bajo SMA50 y SMA200 y peor comportamiento que el MSCI World en todos los plazos; su exposición ya está en gran parte dentro del MSCI World (interpretación).</li></ul>      </div>
+    </div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+    <div class="label">Contexto macro</div>
+    <p style="margin:6px 0 0">Entorno de ciclo tardío: crecimiento global aguantando gracias a la IA, pero con inflación al alza en EE. UU. y la zona euro y bancos centrales con sesgo restrictivo (subidas previstas de la Fed y del BCE). El mercado muestra miedo extremo y VIX en zona de pánico, con valoraciones aún muy exigentes (CAPE alto). Riesgo elevado para la renta variable; conviene prudencia y no forzar entradas.</p>
+    <details><summary>Hechos, interpretaciones y riesgos globales</summary>
+<ul>
+  <li><span class="tag tag-fact">hecho</span>El FMI estima un crecimiento global del 3,1% este año, impulsado por la IA en una docena de economías, que compensa el choque energético por las turbulencias en Oriente Medio.<a class="cite" href="https://www.imf.org/en/news/articles/2026/11/19/sp111926-reaching-up-for-faster-growth" target="_blank" rel="noopener" title="Reaching Up for Faster Growth (sin fecha)">[S1]</a></li>
+  <li><span class="tag tag-fact">hecho</span>La economía de la zona euro ha resistido mejor de lo esperado y se prevé que siga creciendo moderadamente en 2027.<a class="cite" href="https://www.reuters.com/world/euro-zone-economy-seen-growing-moderately-france-outlook-weakest-commission-2026-11-17" target="_blank" rel="noopener" title="Euro zone economy seen growing moderately, France outlook ... (sin fecha)">[S3]</a></li>
+  <li><span class="tag tag-fact">hecho</span>La Fed mantuvo el tipo en el rango 3,75%-4,00% en octubre y sus miembros se centraron en riesgos de inflación, que se acelera muy por encima del objetivo del 2%.<a class="cite" href="https://www.reuters.com/business/fed-policymakers-focused-inflation-risks-october-with-some-seeing-need-bigger-2026-11-18" target="_blank" rel="noopener" title="Fed policymakers focused on inflation risks in October ... - Reuters (sin fecha)">[S8]</a></li>
+  <li><span class="tag tag-fact">hecho</span>Barr, de la Fed, señala que probablemente habrá subidas de tipos; el FOMC se reúne el 8 y 9 de diciembre.<a class="cite" href="https://www.reuters.com/business/feds-barr-says-rate-rises-likely-lie-ahead-economy-2026-11-18" target="_blank" rel="noopener" title="Fed&#39;s Barr says rate rises likely lie ahead for economy | Reuters (sin fecha)">[S9]</a></li>
+  <li><span class="tag tag-fact">hecho</span>Se espera que el tipo de depósito del BCE suba del 2,5% actual a entre el 3% y el 3,25% el próximo año, y el BCE estudia elevar el coeficiente de reservas.<a class="cite" href="https://www.reuters.com/business/finance/ecb-discuss-raising-reserve-requirement-next-week-sources-say-2026-11-18" target="_blank" rel="noopener" title="ECB to discuss raising reserve requirement next week, sources say (sin fecha)">[S7]</a></li>
+  <li><span class="tag tag-fact">hecho</span>Barclays advierte de posible debilidad adicional de la bolsa hasta fin de año si la Fed se vuelve más dura o la inflación sorprende al alza; el mercado descuenta unas tres subidas en el próximo año.<a class="cite" href="https://sg.finance.yahoo.com/news/barclays-warns-further-equity-weakness-081911426.html" target="_blank" rel="noopener" title="Barclays warns of further equity weakness as hawkish Fed bets build (sin fecha)">[S50]</a></li>
+  <li><span class="tag ">interpretación</span>Según los datos de FRED, la inflación interanual sube: IPC EE. UU. 4,08% (3,02% hace un año) e IPCA zona euro 4,01% (2,08% hace un año), muy por encima del 2%.</li>
+  <li><span class="tag ">interpretación</span>Los tipos reales a 10 años en EE. UU. (2,88% frente a 1,86% hace un año) encarecen la financiación y presionan las valoraciones.</li>
+  <li><span class="tag ">interpretación</span>El índice de miedo y codicia en 9,7 y el VIX en 35,89 reflejan pánico en el mercado de acciones; el miedo extremo puede abrir oportunidades a largo plazo, pero no basta por sí solo como señal.</li>
+  <li><span class="tag ">interpretación</span>El CAPE del S&amp;P 500 en 36,44 (percentil 97 histórico) indica valoraciones exigentes pese a la corrección reciente.</li>
+  <li><span class="tag ">interpretación</span>Las condiciones financieras siguen algo más laxas que la media (NFCI -0,478), aunque el diferencial high yield se amplía (3,52% frente a 3,17% hace un año), señal de estrés crediticio incipiente.</li>
+  <li><span class="tag ">interpretación</span>El paro en EE. UU. (4,1%) baja y la curva 10a-2a sigue positiva (0,29%), sin señales claras de recesión inminente.</li>
+  <li><span class="tag ">interpretación</span>El euro se ha depreciado frente al dólar (EUR/USD 1,097 frente a 1,1541 hace un año), lo que favorece en euros los activos en dólares ya mantenidos pero encarece nuevas compras en dólares.</li>
+</ul>
+<h3>Riesgos globales</h3><ul><li>Inflación persistente por encima del 4% que obligue a la Fed y al BCE a subir más de lo previsto.</li><li>Pérdida de la percepción de apoyo de la Fed a los mercados (fin del &#39;Fed put&#39;).</li><li>Valoraciones elevadas (CAPE muy alto) vulnerables a tipos reales altos.</li><li>Agotamiento del ciclo de inversión en IA, principal motor del crecimiento.</li><li>Choque energético por tensiones en Oriente Medio.</li><li>Ampliación de diferenciales de crédito y tensiones de liquidez.</li></ul>    </details>
+</div>
+
+<div class="section-head" id="activos"><div><div class="eyebrow">Activos</div><h2>Resumen por activo</h2></div><span class="small faint">Rentabilidades en EUR</span></div>
+<div class="tiles">
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">MSCI World</div><div class="ticker">IWDA.AS · equity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">122.71 <span class="small muted">EUR</span></div>
+      <svg class="spark spark-up" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="MSCI World · 12 meses (EUR)"><title>MSCI World · 12 meses (EUR): 108.11 → 122.71 (+13.5%)</title><polygon points="3,37 3.0,36.2 6.0,31.5 8.9,31.1 11.9,33.1 14.8,32.2 17.8,31.4 20.8,31.6 23.7,27.6 26.7,26.8 29.7,29.6 32.6,30.4 35.6,29.8 38.5,30.3 41.5,28.3 44.5,28.5 47.4,28.9 50.4,30.8 53.3,35.2 56.3,37.0 59.3,33.0 62.2,29.3 65.2,24.1 68.2,24.0 71.1,23.6 74.1,20.1 77.0,18.0 80.0,15.4 83.0,14.7 85.9,14.7 88.9,15.5 91.8,12.6 94.8,14.2 97.8,11.3 100.7,10.8 103.7,12.6 106.7,12.0 109.6,13.5 112.6,7.3 115.5,7.0 118.5,10.3 121.5,7.9 124.4,9.0 127.4,10.1 130.3,9.5 133.3,6.9 136.3,5.3 139.2,3.0 142.2,4.6 145.2,5.5 148.1,5.8 151.1,9.1 154.0,4.7 157.0,15.6 157.0,37" class="spark-area"/><polyline points="3.0,36.2 6.0,31.5 8.9,31.1 11.9,33.1 14.8,32.2 17.8,31.4 20.8,31.6 23.7,27.6 26.7,26.8 29.7,29.6 32.6,30.4 35.6,29.8 38.5,30.3 41.5,28.3 44.5,28.5 47.4,28.9 50.4,30.8 53.3,35.2 56.3,37.0 59.3,33.0 62.2,29.3 65.2,24.1 68.2,24.0 71.1,23.6 74.1,20.1 77.0,18.0 80.0,15.4 83.0,14.7 85.9,14.7 88.9,15.5 91.8,12.6 94.8,14.2 97.8,11.3 100.7,10.8 103.7,12.6 106.7,12.0 109.6,13.5 112.6,7.3 115.5,7.0 118.5,10.3 121.5,7.9 124.4,9.0 127.4,10.1 130.3,9.5 133.3,6.9 136.3,5.3 139.2,3.0 142.2,4.6 145.2,5.5 148.1,5.8 151.1,9.1 154.0,4.7 157.0,15.6" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="15.6" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-5.95%</span></div></div><div><div class="label">6m</div><div class="r"><span class="pos">+1.10%</span></div></div><div><div class="label">12m</div><div class="r"><span class="pos">+12.34%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-up">Alcista</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg down" title="Respecto al análisis del 2026-11-17">5→4</span>
+      </div>
+  </div>
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">S&amp;P 500</div><div class="ticker">^GSPC · equity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">6 910.39 <span class="small muted">USD</span></div>
+      <svg class="spark spark-up" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="S&amp;P 500 · 12 meses (USD)"><title>S&amp;P 500 · 12 meses (USD): 6,602.99 → 6,910.39 (+4.7%)</title><polygon points="3,37 3.0,31.5 6.0,25.7 8.9,25.2 11.9,26.2 14.8,26.0 17.8,23.8 20.8,25.5 23.7,22.9 26.7,23.5 29.7,24.1 32.6,23.6 35.6,23.7 38.5,26.0 41.5,24.3 44.5,25.0 47.4,28.3 50.4,30.8 53.3,33.8 56.3,37.0 59.3,32.0 62.2,26.4 65.2,19.2 68.2,18.2 71.1,16.7 74.1,12.7 77.0,12.5 80.0,11.0 83.0,8.5 85.9,13.1 88.9,12.0 91.8,10.3 94.8,13.8 97.8,10.7 100.7,8.6 103.7,11.3 106.7,12.4 109.6,10.6 112.6,4.3 115.5,3.6 118.5,6.2 121.5,5.4 124.4,5.2 127.4,6.6 130.3,6.8 133.3,4.6 136.3,5.1 139.2,3.0 142.2,6.6 145.2,7.4 148.1,8.5 151.1,13.2 154.0,8.9 157.0,24.2 157.0,37" class="spark-area"/><polyline points="3.0,31.5 6.0,25.7 8.9,25.2 11.9,26.2 14.8,26.0 17.8,23.8 20.8,25.5 23.7,22.9 26.7,23.5 29.7,24.1 32.6,23.6 35.6,23.7 38.5,26.0 41.5,24.3 44.5,25.0 47.4,28.3 50.4,30.8 53.3,33.8 56.3,37.0 59.3,32.0 62.2,26.4 65.2,19.2 68.2,18.2 71.1,16.7 74.1,12.7 77.0,12.5 80.0,11.0 83.0,8.5 85.9,13.1 88.9,12.0 91.8,10.3 94.8,13.8 97.8,10.7 100.7,8.6 103.7,11.3 106.7,12.4 109.6,10.6 112.6,4.3 115.5,3.6 118.5,6.2 121.5,5.4 124.4,5.2 127.4,6.6 130.3,6.8 133.3,4.6 136.3,5.1 139.2,3.0 142.2,6.6 145.2,7.4 148.1,8.5 151.1,13.2 154.0,8.9 157.0,24.2" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="24.2" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-8.39%</span></div></div><div><div class="label">6m</div><div class="r"><span class="neg">-1.63%</span></div></div><div><div class="label">12m</div><div class="r"><span class="pos">+11.18%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-sideways">Lateral</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg down" title="Respecto al análisis del 2026-11-17">5→4</span>
+      </div>
+  </div>
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">Nasdaq 100</div><div class="ticker">^NDX · equity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 5 de 10"><title>Puntuación 5/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="62.8 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">5</text></svg>
+    </div>
+      <div class="tile-price">25 028.98 <span class="small muted">USD</span></div>
+      <svg class="spark spark-up" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="Nasdaq 100 · 12 meses (USD)"><title>Nasdaq 100 · 12 meses (USD): 24,239.57 → 25,028.98 (+3.3%)</title><polygon points="3,37 3.0,32.1 6.0,26.9 8.9,25.8 11.9,27.9 14.8,27.3 17.8,26.0 20.8,27.9 23.7,25.4 26.7,26.5 29.7,26.2 32.6,26.4 35.6,28.5 38.5,30.0 41.5,28.8 44.5,29.0 47.4,30.4 50.4,31.5 53.3,33.6 56.3,37.0 59.3,33.0 62.2,28.3 65.2,21.5 68.2,18.7 71.1,16.9 74.1,10.2 77.0,10.7 80.0,9.1 83.0,5.4 85.9,11.4 88.9,8.5 91.8,5.1 94.8,10.7 97.8,9.8 100.7,7.6 103.7,13.0 106.7,15.1 109.6,14.4 112.6,8.1 115.5,6.7 118.5,9.9 121.5,9.4 124.4,8.9 127.4,9.6 130.3,8.4 133.3,4.2 136.3,3.3 139.2,3.0 142.2,10.4 145.2,11.4 148.1,14.0 151.1,20.1 154.0,15.9 157.0,28.7 157.0,37" class="spark-area"/><polyline points="3.0,32.1 6.0,26.9 8.9,25.8 11.9,27.9 14.8,27.3 17.8,26.0 20.8,27.9 23.7,25.4 26.7,26.5 29.7,26.2 32.6,26.4 35.6,28.5 38.5,30.0 41.5,28.8 44.5,29.0 47.4,30.4 50.4,31.5 53.3,33.6 56.3,37.0 59.3,33.0 62.2,28.3 65.2,21.5 68.2,18.7 71.1,16.9 74.1,10.2 77.0,10.7 80.0,9.1 83.0,5.4 85.9,11.4 88.9,8.5 91.8,5.1 94.8,10.7 97.8,9.8 100.7,7.6 103.7,13.0 106.7,15.1 109.6,14.4 112.6,8.1 115.5,6.7 118.5,9.9 121.5,9.4 124.4,8.9 127.4,9.6 130.3,8.4 133.3,4.2 136.3,3.3 139.2,3.0 142.2,10.4 145.2,11.4 148.1,14.0 151.1,20.1 154.0,15.9 157.0,28.7" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="28.7" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-13.22%</span></div></div><div><div class="label">6m</div><div class="r"><span class="neg">-9.61%</span></div></div><div><div class="label">12m</div><div class="r"><span class="pos">+9.47%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-sideways">Lateral</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg up" title="Respecto al análisis del 2026-11-17">4→5</span>
+      </div>
+  </div>
+  <a class="tile" href="oro.html">
+    <div class="tile-head">
+      <div><div class="tile-name">Oro</div><div class="ticker">GC=F · commodity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">3 515.40 <span class="small muted">USD</span></div>
+      <svg class="spark spark-down" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="Oro · 12 meses (USD)"><title>Oro · 12 meses (USD): 4,079.50 → 3,515.40 (-13.8%)</title><polygon points="3,37 3.0,25.9 6.0,22.5 8.9,22.7 11.9,21.0 14.8,19.9 17.8,16.6 20.8,21.0 23.7,17.7 26.7,15.8 29.7,8.3 32.6,12.9 35.6,8.3 38.5,7.0 41.5,6.3 44.5,3.0 47.4,4.8 50.4,6.7 53.3,16.2 56.3,17.8 59.3,14.2 62.2,12.0 65.2,10.2 68.2,12.9 71.1,14.8 74.1,13.1 77.0,16.5 80.0,17.2 83.0,15.9 85.9,20.3 88.9,22.8 91.8,22.7 94.8,25.6 97.8,25.0 100.7,25.3 103.7,27.1 106.7,26.1 109.6,25.4 112.6,19.6 115.5,18.9 118.5,14.1 121.5,17.1 124.4,18.1 127.4,19.5 130.3,19.2 133.3,21.2 136.3,24.3 139.2,23.2 142.2,23.9 145.2,27.3 148.1,29.5 151.1,26.0 154.0,29.7 157.0,37.0 157.0,37" class="spark-area"/><polyline points="3.0,25.9 6.0,22.5 8.9,22.7 11.9,21.0 14.8,19.9 17.8,16.6 20.8,21.0 23.7,17.7 26.7,15.8 29.7,8.3 32.6,12.9 35.6,8.3 38.5,7.0 41.5,6.3 44.5,3.0 47.4,4.8 50.4,6.7 53.3,16.2 56.3,17.8 59.3,14.2 62.2,12.0 65.2,10.2 68.2,12.9 71.1,14.8 74.1,13.1 77.0,16.5 80.0,17.2 83.0,15.9 85.9,20.3 88.9,22.8 91.8,22.7 94.8,25.6 97.8,25.0 100.7,25.3 103.7,27.1 106.7,26.1 109.6,25.4 112.6,19.6 115.5,18.9 118.5,14.1 121.5,17.1 124.4,18.1 127.4,19.5 130.3,19.2 133.3,21.2 136.3,24.3 139.2,23.2 142.2,23.9 145.2,27.3 148.1,29.5 151.1,26.0 154.0,29.7 157.0,37.0" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="37.0" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-13.24%</span></div></div><div><div class="label">6m</div><div class="r"><span class="neg">-17.98%</span></div></div><div><div class="label">12m</div><div class="r"><span class="neg">-8.91%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-down">Bajista</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg " title="Respecto al análisis del 2026-11-17">= sin cambios</span>
+<span class="tile-link">Ver análisis →</span>      </div>
+  </a>
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">Bitcoin</div><div class="ticker">BTC-USD · crypto</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">60 070.58 <span class="small muted">USD</span></div>
+      <svg class="spark spark-down" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="Bitcoin · 12 meses (USD)"><title>Bitcoin · 12 meses (USD): 86,805.01 → 60,070.58 (-30.8%)</title><polygon points="3,37 3.0,9.8 6.0,6.2 8.9,6.2 11.9,8.4 14.8,8.0 17.8,8.8 20.8,5.2 23.7,5.8 26.7,3.0 29.7,10.0 32.6,19.6 35.6,26.3 38.5,27.8 41.5,28.9 44.5,30.8 47.4,30.6 50.4,23.8 53.3,28.7 56.3,30.6 59.3,27.6 62.2,25.8 65.2,22.7 68.2,17.9 71.1,18.1 74.1,14.5 77.0,19.2 80.0,19.6 83.0,23.0 85.9,33.3 88.9,30.8 91.8,33.3 94.8,37.0 97.8,33.0 100.7,32.8 103.7,31.9 106.7,31.2 109.6,33.1 112.6,31.7 115.5,33.7 118.5,18.8 121.5,18.9 124.4,16.2 127.4,19.7 130.3,15.5 133.3,12.1 136.3,10.1 139.2,12.9 142.2,14.6 145.2,16.6 148.1,18.3 151.1,22.0 154.0,31.2 157.0,36.5 157.0,37" class="spark-area"/><polyline points="3.0,9.8 6.0,6.2 8.9,6.2 11.9,8.4 14.8,8.0 17.8,8.8 20.8,5.2 23.7,5.8 26.7,3.0 29.7,10.0 32.6,19.6 35.6,26.3 38.5,27.8 41.5,28.9 44.5,30.8 47.4,30.6 50.4,23.8 53.3,28.7 56.3,30.6 59.3,27.6 62.2,25.8 65.2,22.7 68.2,17.9 71.1,18.1 74.1,14.5 77.0,19.2 80.0,19.6 83.0,23.0 85.9,33.3 88.9,30.8 91.8,33.3 94.8,37.0 97.8,33.0 100.7,32.8 103.7,31.9 106.7,31.2 109.6,33.1 112.6,31.7 115.5,33.7 118.5,18.8 121.5,18.9 124.4,16.2 127.4,19.7 130.3,15.5 133.3,12.1 136.3,10.1 139.2,12.9 142.2,14.6 145.2,16.6 148.1,18.3 151.1,22.0 154.0,31.2 157.0,36.5" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="36.5" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-26.82%</span></div></div><div><div class="label">6m</div><div class="r"><span class="neg">-17.90%</span></div></div><div><div class="label">12m</div><div class="r"><span class="neg">-25.77%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-sideways">Lateral</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg up" title="Respecto al análisis del 2026-11-17">3→4</span>
+      </div>
+  </div>
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">Materias primas</div><div class="ticker">DBC · commodity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">29.32 <span class="small muted">USD</span></div>
+      <svg class="spark spark-up" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="Materias primas · 12 meses (USD)"><title>Materias primas · 12 meses (USD): 21.80 → 29.32 (+34.5%)</title><polygon points="3,37 3.0,37.0 6.0,35.6 8.9,34.9 11.9,36.0 14.8,36.1 17.8,34.5 20.8,35.4 23.7,34.0 26.7,33.2 29.7,30.4 32.6,29.7 35.6,30.9 38.5,31.2 41.5,29.3 44.5,27.9 47.4,21.2 50.4,17.9 53.3,17.3 56.3,16.8 59.3,16.2 62.2,18.5 65.2,19.1 68.2,14.7 71.1,12.1 74.1,13.5 77.0,11.0 80.0,12.8 83.0,15.8 85.9,16.5 88.9,18.3 91.8,20.9 94.8,23.8 97.8,23.8 100.7,21.2 103.7,17.1 106.7,14.1 109.6,15.8 112.6,17.3 115.5,14.3 118.5,10.8 121.5,12.1 124.4,9.1 127.4,5.6 130.3,6.2 133.3,7.1 136.3,7.3 139.2,6.2 142.2,4.0 145.2,3.0 148.1,4.4 151.1,10.1 154.0,12.1 157.0,16.2 157.0,37" class="spark-area"/><polyline points="3.0,37.0 6.0,35.6 8.9,34.9 11.9,36.0 14.8,36.1 17.8,34.5 20.8,35.4 23.7,34.0 26.7,33.2 29.7,30.4 32.6,29.7 35.6,30.9 38.5,31.2 41.5,29.3 44.5,27.9 47.4,21.2 50.4,17.9 53.3,17.3 56.3,16.8 59.3,16.2 62.2,18.5 65.2,19.1 68.2,14.7 71.1,12.1 74.1,13.5 77.0,11.0 80.0,12.8 83.0,15.8 85.9,16.5 88.9,18.3 91.8,20.9 94.8,23.8 97.8,23.8 100.7,21.2 103.7,17.1 106.7,14.1 109.6,15.8 112.6,17.3 115.5,14.3 118.5,10.8 121.5,12.1 124.4,9.1 127.4,5.6 130.3,6.2 133.3,7.1 136.3,7.3 139.2,6.2 142.2,4.0 145.2,3.0 148.1,4.4 151.1,10.1 154.0,12.1 157.0,16.2" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="16.2" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-10.70%</span></div></div><div><div class="label">6m</div><div class="r"><span class="pos">+0.47%</span></div></div><div><div class="label">12m</div><div class="r"><span class="pos">+40.58%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-sideways">Lateral</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg " title="Respecto al análisis del 2026-11-17">= sin cambios</span>
+      </div>
+  </div>
+  <div class="tile static">
+    <div class="tile-head">
+      <div><div class="tile-name">Energía</div><div class="ticker">XLE · equity</div></div>
+      <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
+    </div>
+      <div class="tile-price">60.51 <span class="small muted">USD</span></div>
+      <svg class="spark spark-up" viewBox="0 0 160 40" preserveAspectRatio="none" role="img" aria-label="Energía · 12 meses (USD)"><title>Energía · 12 meses (USD): 43.47 → 60.51 (+39.2%)</title><polygon points="3,37 3.0,36.3 6.0,35.7 8.9,34.8 11.9,35.3 14.8,37.0 17.8,36.5 20.8,34.7 23.7,33.4 26.7,32.2 29.7,30.3 32.6,28.0 35.6,25.3 38.5,24.0 41.5,23.3 44.5,22.0 47.4,21.2 50.4,19.9 53.3,17.9 56.3,13.4 59.3,17.5 62.2,20.3 65.2,22.7 68.2,20.4 71.1,18.0 74.1,21.9 77.0,17.2 80.0,17.2 83.0,21.1 85.9,19.4 88.9,19.6 91.8,24.3 94.8,23.7 97.8,24.5 100.7,22.1 103.7,18.9 106.7,16.5 109.6,16.6 112.6,19.1 115.5,13.6 118.5,11.5 121.5,12.7 124.4,10.9 127.4,9.6 130.3,10.6 133.3,13.0 136.3,12.0 139.2,9.2 142.2,5.2 145.2,3.9 148.1,3.0 151.1,13.5 154.0,9.3 157.0,14.9 157.0,37" class="spark-area"/><polyline points="3.0,36.3 6.0,35.7 8.9,34.8 11.9,35.3 14.8,37.0 17.8,36.5 20.8,34.7 23.7,33.4 26.7,32.2 29.7,30.3 32.6,28.0 35.6,25.3 38.5,24.0 41.5,23.3 44.5,22.0 47.4,21.2 50.4,19.9 53.3,17.9 56.3,13.4 59.3,17.5 62.2,20.3 65.2,22.7 68.2,20.4 71.1,18.0 74.1,21.9 77.0,17.2 80.0,17.2 83.0,21.1 85.9,19.4 88.9,19.6 91.8,24.3 94.8,23.7 97.8,24.5 100.7,22.1 103.7,18.9 106.7,16.5 109.6,16.6 112.6,19.1 115.5,13.6 118.5,11.5 121.5,12.7 124.4,10.9 127.4,9.6 130.3,10.6 133.3,13.0 136.3,12.0 139.2,9.2 142.2,5.2 145.2,3.9 148.1,3.0 151.1,13.5 154.0,9.3 157.0,14.9" class="spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="157.0" cy="14.9" r="3" class="spark-dot"/></svg>
+      <div class="tile-rets">
+<div><div class="label">1m</div><div class="r"><span class="neg">-8.98%</span></div></div><div><div class="label">6m</div><div class="r"><span class="pos">+8.48%</span></div></div><div><div class="label">12m</div><div class="r"><span class="pos">+47.37%</span></div></div>      </div>
+      <div class="tile-foot">
+        <span class="pill trend-up">Alcista</span>
+<span class="pill act-no_extra">Esperar</span>        <span class="chg up" title="Respecto al análisis del 2026-11-17">3→4</span>
+      </div>
+  </div>
+</div>
+
+<a class="panel strategy-tile" href="oro.html#estrategia" style="margin-top:12px; color:var(--text)">
+  <div><div class="label">Oro · seguimiento de tendencia (diario)</div><div class="state"><span class="pill st-sin_posicion">Sin posición</span></div></div>
+  <div class="small muted" style="flex:1; min-width:220px">Filtro no superado: el cierre (65.37 EUR) está un 12.0% por debajo de la SMA200 (74.28). Aunque haya rupturas, no se abren posiciones nuevas.</div>
+<div class="small mono">Factores macro: <b class="pos">0</b> favorecen · <b class="neg">1</b> perjudican · 9 sin efecto claro</div>  <span class="tile-link">Ver estrategia →</span>
+</a>
+
+<div class="section-head" id="eventos"><div><div class="eyebrow">Calendario</div><h2>Próximos eventos relevantes</h2></div></div>
+<div class="panel">
+    <div class="event">
+      <div class="event-date ">2026-12-08</div>
+      <div><b>Reunión del FOMC de la Fed (8 y 9 de diciembre)</b><div class="small muted">Se espera una posible subida de tipos; clave para renta variable, bonos y dólar.</div></div>
+      <div><a class="cite" href="https://www.reuters.com/business/feds-barr-says-rate-rises-likely-lie-ahead-economy-2026-11-18" target="_blank" rel="noopener" title="Fed&#39;s Barr says rate rises likely lie ahead for economy | Reuters (sin fecha)">[S9]</a><a class="cite" href="https://sg.finance.yahoo.com/news/barclays-warns-further-equity-weakness-081911426.html" target="_blank" rel="noopener" title="Barclays warns of further equity weakness as hawkish Fed bets build (sin fecha)">[S50]</a></div>
+    </div>
+    <div class="event">
+      <div class="event-date tbd">Fecha por confirmar</div>
+      <div><b>Dato de IPC de EE. UU. posterior a la reunión de diciembre de la Fed</b><div class="small muted">Catalizador del apetito por riesgo a fin de año; afecta a bolsa y bonos.</div></div>
+      <div><a class="cite" href="https://sg.finance.yahoo.com/news/barclays-warns-further-equity-weakness-081911426.html" target="_blank" rel="noopener" title="Barclays warns of further equity weakness as hawkish Fed bets build (sin fecha)">[S50]</a></div>
+    </div>
+    <div class="event">
+      <div class="event-date tbd">Fecha por confirmar</div>
+      <div><b>Debate del BCE sobre elevar el coeficiente de reservas</b><div class="small muted">Endurecimiento de la liquidez en euros; afecta a bancos, bonos y renta variable europea.</div></div>
+      <div><a class="cite" href="https://www.reuters.com/business/finance/ecb-discuss-raising-reserve-requirement-next-week-sources-say-2026-11-18" target="_blank" rel="noopener" title="ECB to discuss raising reserve requirement next week, sources say (sin fecha)">[S7]</a></div>
+    </div>
+    <div class="event">
+      <div class="event-date tbd">Fecha por confirmar</div>
+      <div><b>Salida a bolsa de Anthropic</b><div class="small muted">Podría drenar liquidez del mercado según analistas; afecta a renta variable tecnológica y cripto.</div></div>
+      <div><a class="cite" href="https://finance.yahoo.com/markets/crypto/articles/bitcoin-muted-below-65k-rate-071634482.html" target="_blank" rel="noopener" title="Bitcoin dips to $63.4k as rate jitters persist; Fed minutes awaited (sin fecha)">[S47]</a></div>
+    </div>
+    <p class="small faint" style="margin:10px 0 0">Fechas extraídas de fuentes web: confírmalas en el calendario oficial.</p>
+</div>
+
+<div class="section-head" id="comparativa"><div><div class="eyebrow">Datos objetivos</div><h2>Comparativa de activos</h2></div><span class="small faint">Rentabilidades en EUR</span></div>
+<div class="panel" style="padding:0; overflow:hidden">
+  <div class="table-wrap"><table class="compare">
+    <tr>
+      <th>Activo</th><th class="num">Precio</th>
+      <th class="num">1m</th><th class="num">3m</th><th class="num">6m</th><th class="num">12m</th>
+      <th>&gt;SMA 50/200</th><th>Tendencia</th><th class="num">Drawd.</th><th class="num">Vol.</th><th class="num">Punt.</th><th>Acción</th>
+    </tr>
+    <tr>
+      <td><b>MSCI World</b><br><span class="small faint mono">IWDA.AS</span></td>
+      <td class="num">122.71 <span class="faint">EUR</span></td>
+<td class="num"><span class="neg">-5.95%</span></td><td class="num"><span class="neg">-2.75%</span></td><td class="num"><span class="pos">+1.10%</span></td><td class="num"><span class="pos">+12.34%</span></td>      <td class="mono" style="white-space:nowrap">No / Sí</td>
+      <td>Alcista</td>
+      <td class="num"><span class="neg">-7.22%</span></td>
+      <td class="num">11.50%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><b>S&amp;P 500</b><br><span class="small faint mono">^GSPC</span></td>
+      <td class="num">6 910.39 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-8.39%</span></td><td class="num"><span class="neg">-3.76%</span></td><td class="num"><span class="neg">-1.63%</span></td><td class="num"><span class="pos">+11.18%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
+      <td>Lateral</td>
+      <td class="num"><span class="neg">-11.62%</span></td>
+      <td class="num">14.28%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><b>Nasdaq 100</b><br><span class="small faint mono">^NDX</span></td>
+      <td class="num">25 028.98 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-13.22%</span></td><td class="num"><span class="neg">-8.82%</span></td><td class="num"><span class="neg">-9.61%</span></td><td class="num"><span class="pos">+9.47%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
+      <td>Lateral</td>
+      <td class="num"><span class="neg">-19.84%</span></td>
+      <td class="num">22.16%</td>
+      <td class="num score-mid"><b>5</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><a href="oro.html"><b>Oro</b></a><br><span class="small faint mono">GC=F</span></td>
+      <td class="num">3 515.40 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-13.24%</span></td><td class="num"><span class="neg">-18.16%</span></td><td class="num"><span class="neg">-17.98%</span></td><td class="num"><span class="neg">-8.91%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
+      <td>Bajista</td>
+      <td class="num"><span class="neg">-33.90%</span></td>
+      <td class="num">28.54%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><b>Bitcoin</b><br><span class="small faint mono">BTC-USD</span></td>
+      <td class="num">60 070.58 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-26.82%</span></td><td class="num"><span class="neg">-18.30%</span></td><td class="num"><span class="neg">-17.90%</span></td><td class="num"><span class="neg">-25.77%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
+      <td>Lateral</td>
+      <td class="num"><span class="neg">-38.03%</span></td>
+      <td class="num">44.55%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><b>Materias primas</b><br><span class="small faint mono">DBC</span></td>
+      <td class="num">29.32 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-10.70%</span></td><td class="num"><span class="pos">+0.30%</span></td><td class="num"><span class="pos">+0.47%</span></td><td class="num"><span class="pos">+40.58%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
+      <td>Lateral</td>
+      <td class="num"><span class="neg">-14.02%</span></td>
+      <td class="num">21.37%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+    <tr>
+      <td><b>Energía</b><br><span class="small faint mono">XLE</span></td>
+      <td class="num">60.51 <span class="faint">USD</span></td>
+<td class="num"><span class="neg">-8.98%</span></td><td class="num"><span class="pos">+1.61%</span></td><td class="num"><span class="pos">+8.48%</span></td><td class="num"><span class="pos">+47.37%</span></td>      <td class="mono" style="white-space:nowrap">No / Sí</td>
+      <td>Alcista</td>
+      <td class="num"><span class="neg">-13.58%</span></td>
+      <td class="num">23.44%</td>
+      <td class="num score-mid"><b>4</b></td>
+      <td><span class="pill act-no_extra">Esperar</span></td>
+    </tr>
+  </table></div>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">Rentabilidades en EUR. Drawdown desde el máximo de 12 meses. Tendencia calculada en Python (precio frente a SMA200, SMA50 frente a SMA200 y rentabilidad a 6 meses). Puntuación 0-10 del analista.</p>
+</div>
+
+<div class="section-head"><h2>Fuentes del análisis macro</h2></div>
+<div class="panel">
+  <ol class="small">
+<li value="1"><span class="mono faint">[S1]</span> <a href="https://www.imf.org/en/news/articles/2026/11/19/sp111926-reaching-up-for-faster-growth" target="_blank" rel="noopener">Reaching Up for Faster Growth</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="2"><span class="mono faint">[S2]</span> <a href="https://www.imf.org/en/news/articles/2026/11/17/pr26367-republic-of-korea-imf-staff-completes-2026-aiv-mission" target="_blank" rel="noopener">IMF Staff Completes 2026 Article IV Mission to the Republic of Korea</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="3"><span class="mono faint">[S3]</span> <a href="https://www.reuters.com/world/euro-zone-economy-seen-growing-moderately-france-outlook-weakest-commission-2026-11-17" target="_blank" rel="noopener">Euro zone economy seen growing moderately, France outlook ...</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="4"><span class="mono faint">[S4]</span> <a href="https://www.imf.org/en/news/articles/2026/11/12/sp112226-ms-choosing-growth-reforms-for-innovation-scale-and-resilience" target="_blank" rel="noopener">Choosing Growth: Reforms for Innovation, Scale, and Resilience</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="5"><span class="mono faint">[S5]</span> <a href="https://www.federalreserve.gov/newsevents/speech/cook20261120a.htm" target="_blank" rel="noopener">Federal Reserve Board - Page not Found</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="6"><span class="mono faint">[S6]</span> <a href="https://www.ecb.europa.eu/press/conferences/html/20261201_cb_econ_model_frontiers.en.html" target="_blank" rel="noopener">Central banking economic modelling frontiers: trends, cycles and ...</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="7"><span class="mono faint">[S7]</span> <a href="https://www.reuters.com/business/finance/ecb-discuss-raising-reserve-requirement-next-week-sources-say-2026-11-18" target="_blank" rel="noopener">ECB to discuss raising reserve requirement next week, sources say</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="8"><span class="mono faint">[S8]</span> <a href="https://www.reuters.com/business/fed-policymakers-focused-inflation-risks-october-with-some-seeing-need-bigger-2026-11-18" target="_blank" rel="noopener">Fed policymakers focused on inflation risks in October ... - Reuters</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="9"><span class="mono faint">[S9]</span> <a href="https://www.reuters.com/business/feds-barr-says-rate-rises-likely-lie-ahead-economy-2026-11-18" target="_blank" rel="noopener">Fed&#39;s Barr says rate rises likely lie ahead for economy | Reuters</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="10"><span class="mono faint">[S10]</span> <a href="https://www.federalreserve.gov/releases/h41" target="_blank" rel="noopener">Factors Affecting Reserve Balances - H.4.1 - Release Dates</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="11"><span class="mono faint">[S11]</span> <a href="https://fred.stlouisfed.org/series/KCROROL" target="_blank" rel="noopener">Risk-ON Risk-Off Index (KCRORO): Liquidity (KCROROL) | FRED | St. Louis Fed</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="12"><span class="mono faint">[S12]</span> <a href="https://tradingeconomics.com/calendar?article=29376&amp;importance=2&amp;startdate=2026-10-23" target="_blank" rel="noopener">Week Ahead - Oct 26th</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="13"><span class="mono faint">[S13]</span> <a href="https://tradingeconomics.com/calendar?article=29379&amp;importance=2&amp;startdate=2026-11-13" target="_blank" rel="noopener">Week Ahead - Nov 16th</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="14"><span class="mono faint">[S14]</span> <a href="https://tradingeconomics.com/calendar?article=29377&amp;importance=2&amp;startdate=2026-10-30" target="_blank" rel="noopener">Week Ahead - Nov 2nd</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="15"><span class="mono faint">[S15]</span> <a href="https://www.ecb.europa.eu/press/calendars/weekly/html/index.en.html" target="_blank" rel="noopener">Weekly schedule</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="16"><span class="mono faint">[S16]</span> <a href="https://tradingeconomics.com/united-states/calendar" target="_blank" rel="noopener">United States Calendar</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="46"><span class="mono faint">[S46]</span> <a href="https://ca.finance.yahoo.com/news/mas-warns-ai-agents-could-023151196.html" target="_blank" rel="noopener">MAS Warns AI Agents Could Move Money Faster, Raise Finance Risks</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="47"><span class="mono faint">[S47]</span> <a href="https://finance.yahoo.com/markets/crypto/articles/bitcoin-muted-below-65k-rate-071634482.html" target="_blank" rel="noopener">Bitcoin dips to $63.4k as rate jitters persist; Fed minutes awaited</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="48"><span class="mono faint">[S48]</span> <a href="https://www.bloomberg.com/professional/insights/financial-services/how-do-we-build-resilience-without-fragmenting-finance" target="_blank" rel="noopener">How do we build resilience without fragmenting finance? | Insights | Bloomberg Professional Services</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="49"><span class="mono faint">[S49]</span> <a href="https://www.bloomberg.com/news/articles/2026-11-17/latest-oil-market-news-and-analysis-for-nov-18" target="_blank" rel="noopener">Oil Falls Despite Persian Gulf Flare-Ups as Traders Shun Risk</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li><li value="50"><span class="mono faint">[S50]</span> <a href="https://sg.finance.yahoo.com/news/barclays-warns-further-equity-weakness-081911426.html" target="_blank" rel="noopener">Barclays warns of further equity weakness as hawkish Fed bets build</a> <span class="faint">· publicado sin fecha · consultado 2026-11-21</span></li>  </ol>
+</div>
+
+<div class="panel disclaimer" style="margin-top:24px">
+  <b>Aviso importante:</b> esta web se genera automáticamente con fines informativos y educativos. No constituye
+  asesoramiento financiero ni una recomendación de compra o venta: no tiene en cuenta la situación, los objetivos ni la
+  tolerancia al riesgo de nadie. Los datos pueden contener errores o retrasos y los análisis de IA pueden equivocarse.
+  Las rentabilidades pasadas no garantizan rentabilidades futuras.
+</div>
+<footer>Generado 2026-11-23T23:46:06 · análisis 20261121-182309-847ff2-semanal · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
 </main>
 </body>
 </html>

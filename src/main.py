@@ -7,6 +7,7 @@ Ejemplos:
   python -m src.main --profiles semanal,refugio   # un informe por perfil, con datos y análisis compartidos
   python -m src.main --mode quant                 # solo datos y cálculos, sin APIs de pago
   python -m src.main --render data/runs/run_X.json  # regenerar HTML de una ejecución guardada
+  python -m src.main --site                       # web pública en docs/ (último análisis + oro recalculado)
 """
 
 from __future__ import annotations
@@ -25,10 +26,13 @@ from src.config import AppConfig, load_config
 from src.core.errors import ConfigError, ReportError
 from src.core.logging_setup import setup_logging
 from src.models import RunRecord
+from src.core.cache import FileCache
 from src.pipeline import Pipeline, RunOptions, build_market_service
+from src.quant.gold_factors import build_factor_study
 from src.quant.trend_snapshot import build_trend_strategy
 from src.reporting.builder import ACTION_LABELS, TREND_STATE_LABELS
 from src.reporting.html import write_report, write_strategy_report
+from src.reporting.site import GOLD_ASSET_ID, build_site
 from src.settings import PROJECT_ROOT, Settings, load_settings
 from src.storage.run_store import RunStore
 
@@ -56,6 +60,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--list-assets", action="store_true", help="Listar activos configurados y salir")
     parser.add_argument("--strategy", "--strategies", dest="strategy", metavar="NOMBRES",
                         help="Solo las estrategias de tendencia indicadas (o 'all'): informe propio sin LLM ni web")
+    parser.add_argument("--site", type=Path, nargs="?", const=PROJECT_ROOT / "docs", metavar="DIR",
+                        help="Generar la web pública (por defecto en docs/): último análisis semanal + estrategia y factores del oro recalculados")
     parser.add_argument("--list-profiles", action="store_true", help="Listar perfiles configurados y salir")
     parser.add_argument("--validate-config", action="store_true", help="Validar la configuración y salir")
     parser.add_argument("--history", type=int, nargs="?", const=20, metavar="N", help="Mostrar las últimas N decisiones guardadas")
@@ -124,6 +130,27 @@ def run_strategies(args: argparse.Namespace, config: AppConfig, settings: Settin
         print(line + (f"  ({r.error})" if r.error else ""))
     return EXIT_DEGRADED if all(r.error for r in results) else EXIT_OK
 
+def run_site(args: argparse.Namespace, config: AppConfig, settings: Settings) -> int:
+    """Genera la web: sin LLM ni búsquedas. Recalcula la estrategia y los factores del oro (pensado para ejecutarse a diario)."""
+    service = build_market_service(config, settings, use_cache=not args.no_cache)
+    gold = next((n for n, s in config.strategies.items() if s.asset_id == GOLD_ASSET_ID and s.enabled), None)
+    strategy = build_trend_strategy(gold, config.strategies[gold], service) if gold else None
+    macro_cache = FileCache(settings.cache_dir / "macro", config.data.macro_cache_ttl_hours, enabled=not args.no_cache) \
+        if config.data.macro_data else None
+    factors = build_factor_study(service, macro_cache)
+    try:
+        paths = build_site(settings.runs_dir, settings.templates_dir, args.site, strategy, factors)
+    except ReportError as exc:
+        logger.error("%s", exc)
+        return EXIT_REPORT
+    print("Web generada: " + ", ".join(str(p) for p in paths))
+    if strategy:
+        print(f"Oro · tendencia: {TREND_STATE_LABELS[strategy.state]}{f' ({strategy.error})' if strategy.error else ''}")
+    if not factors.error:
+        print(f"Oro · factores: {factors.favorable} favorecen, {factors.unfavorable} perjudican, {factors.neutral} sin efecto claro")
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     settings = load_settings()
@@ -161,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
         return render_saved(args, config, settings, store)
     if args.strategy:
         return run_strategies(args, config, settings, run_id)
+    if args.site:
+        return run_site(args, config, settings)
 
     asset_ids = [args.asset] if args.asset else ([x.strip() for x in args.assets.split(",") if x.strip()] if args.assets else None)
     try:

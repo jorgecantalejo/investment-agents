@@ -16,8 +16,7 @@ LOG="$PROJECT_DIR/logs/claude-cron.log"
     --allowedTools "Bash(.venv/bin/python -m src.main *)" "Bash(date *)" "Bash(ls *)" \
       "Read" "Agent" "Write(/$PROJECT_DIR/data/handoff/**)" "Edit(/$PROJECT_DIR/data/handoff/**)" < /dev/null || rc=$?
   echo "=== fin $(date '+%F %T') (código $rc) ==="
-  # Publicación desactivada hasta tener la web nueva (sin importes): los informes actuales muestran euros.
-  # if [ "$rc" -eq 0 ]; then
-  #   "$PROJECT_DIR/scripts/publish_site.sh" || echo "Fallo al publicar en GitHub Pages"
-  # fi
+  if [ "$rc" -eq 0 ]; then
+    "$PROJECT_DIR/scripts/publish_site.sh" || echo "Fallo al publicar en GitHub Pages"
+  fi
 } >> "$LOG" 2>&1

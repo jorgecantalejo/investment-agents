@@ -124,6 +124,7 @@ Ejecutar solo partes concretas:
 | `--handoff-status DIR` | Estado de una carpeta handoff en JSON (pendientes, inválidas, informes generados) |
 | `--profiles a,b` / `--list-profiles` | Informes por perfil / listar perfiles |
 | `--strategy gold_trend` (o `all`) | Solo las estrategias de tendencia: informe propio, sin LLM ni web (ver abajo) |
+| `--site [DIR]` | Web pública en `docs/` (o DIR): último análisis + estrategia y factores del oro recalculados, sin importes |
 | `--no-cache` | Ignora la caché local |
 | `--history [N]` | Muestra las últimas N decisiones guardadas |
 | `--list-assets` / `--validate-config` | Utilidades de configuración |
@@ -241,15 +242,53 @@ Acciones posibles: `no_extra` (esperar), `small_extra` (entrada pequeña), `norm
 - `logs/run_<id>.log`: log de la ejecución con el `run_id` en cada línea.
 - `data/cache/`: caché JSON de precios (12h), fundamentales (24h) y búsquedas (12h).
 
+## Web pública (GitHub Pages)
+
+```bash
+python -m src.main --site          # genera docs/index.html y docs/oro.html
+scripts/publish_site.sh            # genera y publica (commit + push solo de docs/)
+```
+
+Sin histórico: cada generación sobrescribe las mismas URLs y borra de `docs/` cualquier otro HTML.
+
+- **Portada** (`index.html`): régimen macro, indicadores, datos de FRED, resumen de la semana, tarjetas de los activos con
+  la marca de cambio respecto al análisis completo anterior (p. ej. «4→6», «esperar→entrada pequeña»), eventos,
+  comparativa y fuentes. Sale del último análisis completo guardado en `data/runs/` (con macro y analistas).
+- **Oro** (`oro.html`): 1) datos e indicadores del análisis semanal; 2) estrategia de tendencia; 3) factores macro.
+  La estrategia y los factores se **recalculan cada vez** que se genera la web, así que se pueden publicar a diario sin LLM.
+- **Sin importes**: la web es pública y no muestra capital, presupuestos, importes ni participaciones. La estrategia
+  muestra niveles de precio y el riesgo en % (por ejemplo, distancia al stop y tamaño máximo como % del capital).
+
+### Factores macro del oro (`src/quant/gold_factors.py`)
+
+Estudio informativo: **no cambia las señales de la estrategia**. Con el oro en EUR (`GC=F` ÷ EUR/USD, equivalente a
+`PPFB.DE` pero con historia desde 2003) y cada factor (tipo real y tipo de la Fed, inflación esperada, IPC de EE. UU. e IPCA,
+DXY, EUR/USD, VIX, diferencial high yield, petróleo y plata):
+
+| Columna | Cálculo |
+|---|---|
+| Últimos 3m | Variación del factor en 3 meses (pb en tipos e inflación, pts en VIX, % en precios) |
+| Si sube / si baja | Rentabilidad media del oro a 3 meses en los meses en que el factor venía subiendo o bajando, % de subidas y nº de meses |
+| Solidez (t) | Diferencia entre ambos regímenes ÷ error estándar, con muestra efectiva = meses ÷ 3 (ventanas solapadas) |
+| Corr. 52s | Correlación de variaciones semanales del último año (no en datos mensuales) |
+| Lectura actual | «Favorece» o «perjudica» solo si la diferencia es ≥ 1 pp, hay ≥ 24 meses por régimen y \|t\| ≥ 1,5; si no, «sin efecto claro» |
+
+Las series mensuales (IPC) se desplazan un mes por el retraso de publicación. Cada factor falla por separado. Junto a
+cada uno se muestra la relación que suele citarse y se avisa cuando los datos del periodo dicen lo contrario.
+
 ## Programar con cron
 
 ```bash
 crontab -e
-# Cada lunes a las 08:00
-0 8 * * 1 /home/<usuario>/investment-agents/scripts/run_report.sh
+# Lunes a las 08:00: análisis semanal con Claude Code (suscripción, modo handoff) y publicación de la web
+0 8 * * 1 /home/<usuario>/investment-agents/scripts/run_claude_analysis.sh semanal
+# De lunes a viernes a las 18:30: estrategia y factores del oro recalculados y web publicada (solo Python)
+30 18 * * 1-5 /home/<usuario>/investment-agents/scripts/publish_site.sh >> /home/<usuario>/investment-agents/logs/site.log 2>&1
 ```
 
-El script usa el Python del venv, evita ejecuciones solapadas (`flock`) y añade la salida a `logs/cron.log`.
+`run_claude_analysis.sh` lanza `/analisis` con `claude -p` y solo permite las herramientas que necesita; evita
+ejecuciones solapadas (`flock`) y escribe en `logs/claude-cron.log`. Con API en lugar de suscripción:
+`scripts/run_report.sh --profiles semanal` (salida en `logs/cron.log`).
 
 ## Tests
 

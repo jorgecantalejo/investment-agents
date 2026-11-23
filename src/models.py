@@ -277,6 +277,61 @@ class TrendStrategyResult(BaseModel):
     error: str | None = None
 
 
+class FactorRegime(BaseModel):
+    """Rentabilidad posterior del activo en los meses en que el factor subía (o bajaba)."""
+
+    months: int = 0
+    avg_return_1m_pct: float | None = None
+    avg_return_3m_pct: float | None = None
+    up_share_3m_pct: float | None = Field(None, description="% de meses con rentabilidad a 3 meses positiva")
+    std_3m_pct: float | None = None
+
+
+class MacroFactor(BaseModel):
+    """Un factor macro y su relación histórica con el activo (solo informativo: no cambia ninguna señal)."""
+
+    id: str
+    name: str
+    source: str
+    unit: str = ""
+    change_unit: str = Field(description="'pb' (puntos básicos), 'pts' o '%': cómo se mide la variación del factor")
+    usual: str = Field(description="Relación que suele citarse con el oro")
+    usual_sign: Literal[-1, 1]
+    value: float | None = None
+    as_of: str | None = None
+    change_3m: float | None = None
+    direction: Literal["up", "down", "flat", "insufficient_data"] = "insufficient_data"
+    rising: FactorRegime = FactorRegime()
+    falling: FactorRegime = FactorRegime()
+    edge_3m_pp: float | None = Field(None, description="Rentabilidad media a 3m en el régimen actual menos en el contrario")
+    t_stat: float | None = Field(None, description="Diferencia de medias entre regímenes / error estándar, con muestra efectiva = meses / 3")
+    observed_sign: Literal[-1, 0, 1] | None = None
+    corr_52w: float | None = None
+    signal: Literal["favorable", "unfavorable", "neutral", "insufficient_data"] = "insufficient_data"
+    sparkline: list[float] = Field(default_factory=list)
+    note: str = ""
+    error: str | None = None
+
+
+class FactorStudy(BaseModel):
+    """Estudio de factores macro de un activo: estado actual y estadística histórica."""
+
+    asset_name: str
+    price_basis: str
+    since: str | None = None
+    until: str | None = None
+    months: int = 0
+    base_avg_3m_pct: float | None = None
+    base_up_share_3m_pct: float | None = None
+    factors: list[MacroFactor] = Field(default_factory=list)
+    favorable: int = 0
+    unfavorable: int = 0
+    neutral: int = 0
+    method: list[str] = Field(default_factory=list)
+    generated_at: str = ""
+    error: str | None = None
+
+
 class SearchUsage(BaseModel):
     budget: int = 0
     performed: int = 0

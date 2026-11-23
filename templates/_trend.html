@@ -1,5 +1,7 @@
-{# Ficha de una estrategia de seguimiento de tendencia. Espera la variable `s` (TrendStrategyResult). #}
+{# Ficha de una estrategia de seguimiento de tendencia. Espera la variable `s` (TrendStrategyResult).
+   Con `public` verdadero (web pública) no muestra capital, participaciones ni importes: solo niveles de precio y riesgo en %. #}
 {% set cfg = s.audit.params if s.audit else {} %}
+{% set public = public is defined and public %}
 <div class="panel trend" id="estrategia-{{ s.id }}">
   <div class="trend-head">
     <div>
@@ -24,7 +26,7 @@
     <div><div class="label">ATR{{ cfg.atr_window }}</div><div class="v">{{ s.atr | num }}</div><div class="small faint mono">{{ s.atr_pct | pct(false) }} del precio</div></div>
   </div>
 
-  <ul class="small">{% for line in s.explanation %}<li>{{ line }}</li>{% endfor %}</ul>
+  <ul class="small">{% for line in s.explanation if not (public and 'capital' in line) %}<li>{{ line }}</li>{% endfor %}</ul>
 
   <div class="legend">
     <span><i class="sw" style="border-color:#3987e5"></i>Cierre {{ s.last_close | num }}</span>
@@ -47,14 +49,20 @@
         <tr><th>Precio de entrada {{ 'real' if r.basis == 'en_curso' else 'previsto' }}</th><td class="num">{{ r.entry_price | num }} {{ s.currency }}</td></tr>
         <tr><th>Stop inicial ({{ cfg.atr_multiple }}×ATR)</th><td class="num">{{ r.initial_stop | num }} {{ s.currency }}</td></tr>
         {% if r.active_stop != r.initial_stop %}<tr><th>Stop activo (máx. de stop inicial y mín. {{ cfg.exit_low }})</th><td class="num">{{ r.active_stop | num }} {{ s.currency }}</td></tr>{% endif %}
+        {% if public %}
+        <tr><th>Distancia al stop</th><td class="num">{{ (r.risk_per_share / r.entry_price * 100) | pct(false) }} del precio de entrada</td></tr>
+        <tr><th>Riesgo máximo por operación</th><td class="num">{{ cfg.risk_pct }}% del capital (incluidos costes)</td></tr>
+        <tr><th>Tamaño de la posición</th><td class="small">Riesgo por operación ÷ distancia al stop: con el stop a un {{ (r.risk_per_share / r.entry_price * 100) | pct(false) }}, la posición sería como máximo un {{ (cfg.risk_pct / (r.risk_per_share / r.entry_price * 100) * 100) | pct(false) }} del capital (con tope del 100%).</td></tr>
+        {% else %}
         <tr><th>Riesgo por participación</th><td class="num">{{ r.risk_per_share | num }} {{ s.currency }}</td></tr>
         <tr><th>Presupuesto de riesgo ({{ cfg.risk_pct }}% de {{ cfg.capital_eur | num(0) }})</th><td class="num">{{ r.risk_budget | num }} {{ s.currency }}</td></tr>
         <tr><th><b>Tamaño máximo permitido</b></th><td class="num"><b>{{ r.max_shares }} participaciones</b><br><span class="faint">{{ r.position_value | num }} {{ s.currency }}</span></td></tr>
         <tr><th>Costes estimados (entrada + salida al stop)</th><td class="num">{{ r.costs | num }} {{ s.currency }}</td></tr>
         <tr><th>Pérdida máxima si salta el stop</th><td class="num">{{ r.total_risk | num }} {{ s.currency }}</td></tr>
+        {% endif %}
       </table>
-      {% if r.capped_by_capital %}<p class="small muted">El tamaño está limitado por el capital, no por el riesgo (sin apalancamiento).</p>{% endif %}
-      <p class="small faint">Costes: comisión {{ cfg.commission_pct }}%{% if cfg.commission_min_eur %} (mín. {{ cfg.commission_min_eur }} {{ s.currency }}){% endif %} y diferencial {{ cfg.spread_pct }}% (la mitad en cada orden). La ejecución real puede abrir con hueco por debajo del stop.</p>
+      {% if r.capped_by_capital and not public %}<p class="small muted">El tamaño está limitado por el capital, no por el riesgo (sin apalancamiento).</p>{% endif %}
+      {% if not public %}<p class="small faint">Costes: comisión {{ cfg.commission_pct }}%{% if cfg.commission_min_eur %} (mín. {{ cfg.commission_min_eur }} {{ s.currency }}){% endif %} y diferencial {{ cfg.spread_pct }}% (la mitad en cada orden). La ejecución real puede abrir con hueco por debajo del stop.</p>{% else %}<p class="small faint">La ejecución real puede abrir con hueco por debajo del stop y perder algo más que el riesgo previsto.</p>{% endif %}
       {% else %}<p class="na">insufficient_data</p>{% endif %}
     </div>
     <div>
@@ -73,9 +81,9 @@
 
   <details><summary>Operaciones reconstruidas ({{ s.trades | length }})</summary>
     <div class="table-wrap"><table>
-      <tr><th>Señal</th><th>Entrada</th><th class="num">Precio</th><th class="num">Stop</th><th class="num">Partic.</th><th>Salida</th><th class="num">Precio</th><th>Motivo</th><th class="num">R</th><th class="num">%</th></tr>
+      <tr><th>Señal</th><th>Entrada</th><th class="num">Precio</th><th class="num">Stop</th>{% if not public %}<th class="num">Partic.</th>{% endif %}<th>Salida</th><th class="num">Precio</th><th>Motivo</th><th class="num">R</th><th class="num">%</th></tr>
       {% for t in s.trades | reverse %}
-      <tr><td class="mono small">{{ t.signal_date }}</td><td class="mono small">{{ t.entry_date }}</td><td class="num">{{ t.entry_price | num }}</td><td class="num">{{ t.initial_stop | num }}</td><td class="num">{{ t.shares }}</td>
+      <tr><td class="mono small">{{ t.signal_date }}</td><td class="mono small">{{ t.entry_date }}</td><td class="num">{{ t.entry_price | num }}</td><td class="num">{{ t.initial_stop | num }}</td>{% if not public %}<td class="num">{{ t.shares }}</td>{% endif %}
           <td class="mono small">{{ t.exit_date or 'abierta' }}</td><td class="num">{{ t.exit_price | num if t.exit_price is not none else '—' }}</td>
           <td class="small">{{ {'stop': 'Stop', 'minimo': 'Mín. ' ~ cfg.exit_low}[t.exit_reason] if t.exit_reason else '—' }}</td>
           <td class="num {{ t.r_multiple | sign_class }}">{{ '%+.2f' | format(t.r_multiple) if t.r_multiple is not none else '—' }}</td>
