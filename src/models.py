@@ -1,0 +1,322 @@
+"""Modelos de dominio compartidos entre capas (datos, búsqueda, síntesis, informe, auditoría).
+
+Convención: una métrica no disponible se guarda como `None` y se muestra/serializa
+para el LLM como "insufficient_data". Nunca se rellena con estimaciones.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from src.analysis.schemas import AssetAnalysis, MacroAnalysis, SupervisorOutput
+from src.config.models import Action
+
+INSUFFICIENT = "insufficient_data"
+PERIODS: tuple[str, ...] = ("1m", "3m", "6m", "12m")
+
+QuantTrend = Literal["up", "sideways", "down", "insufficient_data"]
+QualityLevel = Literal["good", "partial", "poor", "unavailable"]
+Severity = Literal["info", "warning", "blocking"]
+
+
+class Source(BaseModel):
+    """Fuente web citada. El `id` (S1, S2...) es lo que el LLM usa para citar."""
+
+    id: str
+    title: str
+    url: str
+    published_date: str | None = None
+    retrieved_at: str
+    query: str
+    scope: str = Field(description="'macro', 'events' o asset_id")
+    snippet: str = ""
+    provider: str = "tavily"
+
+
+class PriceMetrics(BaseModel):
+    """Métricas calculadas en Python a partir de la serie de precios."""
+
+    currency: str
+    last_price: float
+    last_date: str
+    observations: int
+    returns_pct: dict[str, float | None]
+    returns_report_ccy_pct: dict[str, float | None]
+    report_currency: str
+    sma50: float | None
+    sma200: float | None
+    above_sma50: bool | None
+    above_sma200: bool | None
+    recent_high: float | None
+    recent_high_date: str | None
+    drawdown_from_recent_high_pct: float | None
+    max_drawdown_window_pct: float | None
+    volatility_annualized_pct: float | None
+    benchmark_ticker: str | None
+    benchmark_returns_report_ccy_pct: dict[str, float | None]
+    relative_vs_benchmark_pp: dict[str, float | None]
+    quant_trend: QuantTrend
+    sparkline: list[float] = Field(default_factory=list, description="Cierres semanales de los últimos 12 meses (divisa local)")
+
+
+class ValuationMetrics(BaseModel):
+    """Métricas de valuación. Solo se rellenan con datos del proveedor; si no, None."""
+
+    source_ticker: str | None = None
+    provider: str | None = None
+    as_of: str | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    cape: float | None = None
+    cape_source: str | None = None
+    ev_ebitda: float | None = None
+    price_to_sales: float | None = None
+    dividend_yield_pct: float | None = None
+    percentiles: dict[str, float | None] = Field(default_factory=dict)
+
+
+class MarketIndicator(BaseModel):
+    """Indicador global de mercado (VIX, tipos, dólar, miedo y codicia...). Calculado u obtenido por Python."""
+
+    id: str
+    name: str
+    value: float | None
+    unit: str = ""
+    kind: Literal["sentiment", "volatility", "rates", "fx", "inflation", "credit", "activity", "valuation"]
+    as_of: str | None = None
+    rating: str | None = None
+    previous: dict[str, float | None] = Field(default_factory=dict)
+    source: str = ""
+    note: str = ""
+
+
+class CapeStats(BaseModel):
+    """CAPE (Shiller PE) actual y su posición en la historia. Percentiles 0-100 calculados por Python."""
+
+    value: float
+    as_of: str
+    history_start: str
+    previous: dict[str, float | None] = Field(default_factory=dict)
+    percentile_all: float
+    percentile_30y: float
+    median_all: float
+    median_30y: float
+    source: str = "multpl.com (datos de R. Shiller)"
+
+
+class DataQuality(BaseModel):
+    level: QualityLevel
+    issues: list[str] = Field(default_factory=list)
+
+
+class AssetSnapshot(BaseModel):
+    """Todo lo objetivo que sabemos de un activo en esta ejecución."""
+
+    asset_id: str
+    name: str
+    ticker: str
+    asset_class: str
+    prices: PriceMetrics | None = None
+    valuation: ValuationMetrics | None = None
+    quality: DataQuality
+    error: str | None = None
+    used_stale_cache: bool = False
+
+
+class GuardrailEvent(BaseModel):
+    rule: str
+    message: str
+    severity: Severity = "warning"
+    asset_id: str | None = None
+    before: str | None = None
+    after: str | None = None
+
+
+class Contradiction(BaseModel):
+    description: str
+    asset_ids: list[str] = Field(default_factory=list)
+    origin: str = "python"
+    resolution: str = ""
+
+
+class MissingDataItem(BaseModel):
+    scope: str
+    item: str
+    impact: str = ""
+
+
+class Tranche(BaseModel):
+    amount_eur: float
+    planned_date: str
+
+
+class AssetDecision(BaseModel):
+    """Decisión final por activo tras aplicar los guardrails deterministas."""
+
+    asset_id: str
+    name: str
+    opportunity_score: int | None
+    conviction: str | None
+    analyst_action: Action | None
+    supervisor_action: Action | None
+    proposed_action: Action
+    final_action: Action
+    amount_eur: float = 0.0
+    tranches: list[Tranche] = Field(default_factory=list)
+    rationale: str = ""
+    conditions: list[str] = Field(default_factory=list)
+    invalidation: list[str] = Field(default_factory=list)
+
+
+TrendState = Literal["sin_posicion", "entrada_pendiente", "mantener", "salida_pendiente", "insufficient_data"]
+
+
+class TrendTrade(BaseModel):
+    """Operación teórica reconstruida aplicando las reglas al histórico (señal al cierre, ejecución en la apertura siguiente)."""
+
+    signal_date: str
+    entry_date: str
+    entry_price: float
+    initial_stop: float
+    atr_at_signal: float
+    shares: int
+    exit_signal_date: str | None = None
+    exit_date: str | None = None
+    exit_price: float | None = None
+    exit_reason: Literal["stop", "minimo"] | None = None
+    r_multiple: float | None = Field(None, description="(salida − entrada) / (entrada − stop inicial), sin costes")
+    return_pct: float | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self.exit_date is None
+
+
+class TrendRisk(BaseModel):
+    """Riesgo y tamaño de la operación (prevista, en curso o hipotética). Importes en la divisa de la estrategia."""
+
+    basis: Literal["prevista", "en_curso", "hipotetica"]
+    entry_price: float
+    initial_stop: float
+    active_stop: float
+    risk_per_share: float
+    risk_budget: float
+    max_shares: int
+    position_value: float
+    costs: float = Field(description="Comisiones y medio diferencial en entrada y en salida al stop")
+    total_risk: float = Field(description="max_shares × riesgo por participación + costes")
+    capped_by_capital: bool = False
+
+
+class TrendAudit(BaseModel):
+    rule: str
+    provider: str
+    ticker: str
+    period: str
+    first_date: str
+    last_date: str
+    observations: int
+    data_sha256: str
+    stale_cache: bool = False
+    dropped_incomplete_bar: str | None = None
+    generated_at: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrendStats(BaseModel):
+    trades: int = 0
+    closed: int = 0
+    win_rate_pct: float | None = None
+    avg_r: float | None = None
+    total_r: float | None = None
+    best_r: float | None = None
+    worst_r: float | None = None
+    exposure_pct: float | None = Field(None, description="% de sesiones con posición abierta")
+    since: str | None = None
+
+
+class TrendChart(BaseModel):
+    """Series de las últimas sesiones para el gráfico (None donde el indicador aún no existe)."""
+
+    dates: list[str] = Field(default_factory=list)
+    close: list[float] = Field(default_factory=list)
+    sma: list[float | None] = Field(default_factory=list)
+    upper: list[float | None] = Field(default_factory=list)
+    lower: list[float | None] = Field(default_factory=list)
+
+
+class TrendStrategyResult(BaseModel):
+    """Estado de una estrategia de seguimiento de tendencia. Todo calculado por Python."""
+
+    id: str
+    name: str
+    ticker: str
+    isin: str | None = None
+    currency: str
+    asset_id: str | None = None
+    state: TrendState = "insufficient_data"
+    last_date: str | None = None
+    last_close: float | None = None
+    sma: float | None = None
+    filter_pass: bool | None = None
+    entry_level: float | None = Field(None, description="Máximo de las N sesiones previas")
+    entry_signal: bool | None = None
+    distance_to_entry_pct: float | None = None
+    exit_level: float | None = Field(None, description="Mínimo de las N sesiones previas")
+    atr: float | None = None
+    atr_pct: float | None = None
+    position: TrendTrade | None = None
+    risk: TrendRisk | None = None
+    explanation: list[str] = Field(default_factory=list)
+    trades: list[TrendTrade] = Field(default_factory=list)
+    stats: TrendStats = TrendStats()
+    chart: TrendChart = TrendChart()
+    audit: TrendAudit | None = None
+    error: str | None = None
+
+
+class SearchUsage(BaseModel):
+    budget: int = 0
+    performed: int = 0
+    cache_hits: int = 0
+    failed: int = 0
+    quota_exhausted: bool = False
+    disabled_reason: str | None = None
+
+
+class RunRecord(BaseModel):
+    """Registro completo de una ejecución. Se guarda en JSON y permite regenerar el informe."""
+
+    run_id: str
+    created_at: str
+    mode: str
+    profile: str | None = None
+    report_currency: str
+    assets_requested: list[str]
+    config_snapshot: dict[str, Any]
+    snapshots: list[AssetSnapshot] = Field(default_factory=list)
+    indicators: list[MarketIndicator] = Field(default_factory=list)
+    sources: list[Source] = Field(default_factory=list)
+    macro: MacroAnalysis | None = None
+    asset_analyses: dict[str, AssetAnalysis] = Field(default_factory=dict)
+    supervisor: SupervisorOutput | None = None
+    supervisor_is_fallback: bool = False
+    decisions: list[AssetDecision] = Field(default_factory=list)
+    contradictions: list[Contradiction] = Field(default_factory=list)
+    missing_data: list[MissingDataItem] = Field(default_factory=list)
+    guardrail_events: list[GuardrailEvent] = Field(default_factory=list)
+    strategies: list[TrendStrategyResult] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    search_usage: SearchUsage = SearchUsage()
+    report_path: str | None = None
+    log_path: str | None = None
+    versions: dict[str, str] = Field(default_factory=dict)
+
+    def snapshot_for(self, asset_id: str) -> AssetSnapshot | None:
+        return next((s for s in self.snapshots if s.asset_id == asset_id), None)
+
+    @property
+    def total_extra_eur(self) -> float:
+        return round(sum(d.amount_eur for d in self.decisions), 2)

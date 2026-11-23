@@ -1,0 +1,11 @@
+openai-agents>=0.24,<1
+tavily-python>=0.8,<1
+yfinance>=1.0,<2
+pandas>=2.2
+numpy>=2.0
+jinja2>=3.1
+pyyaml>=6.0
+python-dotenv>=1.0
+pydantic>=2.8,<3
+anthropic>=2.9
+requests>=2.31

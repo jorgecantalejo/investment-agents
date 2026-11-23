@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} — {{ date }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{% include "_styles.html" %}
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="brand-mark"></span>{{ title }}</div>
+    <div class="meta"><span>Fecha <b>{{ date }}</b></span><span>Estrategias <b>{{ strategies | length }}</b></span></div>
+  </div>
+</header>
+<main>
+<div class="section-head"><div><div class="eyebrow">Seguimiento de tendencia</div><h2>Estado de las estrategias</h2></div><span class="small faint">Calculado en Python, sin LLM ni búsquedas</span></div>
+
+{% set p = (strategies | selectattr('audit') | map(attribute='audit') | first).params if strategies | selectattr('audit') | list else {} %}
+{% if p %}
+<div class="panel small">
+  <div class="label">Cómo funciona</div>
+  <ol style="margin-top:6px">
+    <li><b>Filtro de tendencia.</b> Solo se buscan compras si el cierre está por encima de la media de las últimas {{ p.filter_sma }} sesiones: el activo debe estar en tendencia alcista de fondo.</li>
+    <li><b>Entrada por ruptura.</b> Señal cuando el cierre supera el máximo de las {{ p.entry_breakout }} sesiones anteriores. La orden se ejecutaría en la apertura siguiente.</li>
+    <li><b>Stop inicial por volatilidad.</b> Entrada − {{ p.atr_multiple }}×ATR{{ p.atr_window }} (rango medio diario). Con más volatilidad, el stop queda más lejos y la posición sale más pequeña.</li>
+    <li><b>Tamaño por riesgo.</b> Participaciones = presupuesto de riesgo ÷ (riesgo por participación + costes). Si salta el stop, se pierde como máximo ese presupuesto.</li>
+    <li><b>Salida.</b> Cuando el cierre toca el stop inicial o pierde el mínimo de las {{ p.exit_low }} sesiones previas. Así se dejan correr las ganancias y se cortan las pérdidas.</li>
+  </ol>
+  <p class="faint" style="margin:6px 0 0">Las estrategias de tendencia aciertan pocas veces (30-40% es normal) y ganan con unas pocas operaciones grandes. Espera rachas de pequeñas pérdidas y periodos laterales con varias falsas rupturas.</p>
+</div>
+{% endif %}
+
+{% for s in strategies %}{% include "_trend.html" %}{% endfor %}
+
+<footer>Generado {{ generated_at }} · No es asesoramiento financiero</footer>
+</main>
+</body>
+</html>

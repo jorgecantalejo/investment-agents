@@ -1,0 +1,99 @@
+{# Ficha de una estrategia de seguimiento de tendencia. Espera la variable `s` (TrendStrategyResult). #}
+{% set cfg = s.audit.params if s.audit else {} %}
+<div class="panel trend" id="estrategia-{{ s.id }}">
+  <div class="trend-head">
+    <div>
+      <div class="eyebrow">Estrategia experimental · seguimiento de tendencia</div>
+      <h2>{{ s.name }}</h2>
+      <div class="ticker">{{ s.ticker }}{% if s.isin %} · {{ s.isin }}{% endif %} · {{ s.currency }}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="label">Estado</div>
+      <div class="state"><span class="pill st-{{ s.state }}">{{ s.state | trend_state }}</span></div>
+      <div class="small faint mono" style="margin-top:4px">Último dato {{ s.last_date or '—' }}</div>
+    </div>
+  </div>
+
+  {% if s.error %}
+    <p class="na" style="margin-top:12px">insufficient_data · {{ s.error }}</p>
+  {% else %}
+  <div class="checks">
+    <div><div class="label">Filtro · cierre &gt; SMA{{ cfg.filter_sma }}</div><div class="v {{ 'ok' if s.filter_pass else 'ko' }}">{{ '✓ Sí' if s.filter_pass else '✗ No' }}</div><div class="small faint mono">{{ s.last_close | num }} vs {{ s.sma | num }}</div></div>
+    <div><div class="label">Entrada · cierre &gt; máx. {{ cfg.entry_breakout }}</div><div class="v {{ 'ok' if s.entry_signal else 'ko' }}">{{ '✓ Sí' if s.entry_signal else '✗ No' }}</div><div class="small faint mono">máximo previo {{ s.entry_level | num }}</div></div>
+    <div><div class="label">Salida · mín. {{ cfg.exit_low }} sesiones</div><div class="v">{{ s.exit_level | num }}</div><div class="small faint mono">{{ ((s.exit_level / s.last_close - 1) * 100) | pct }} vs cierre{% if not s.position %} · solo con posición{% endif %}</div></div>
+    <div><div class="label">ATR{{ cfg.atr_window }}</div><div class="v">{{ s.atr | num }}</div><div class="small faint mono">{{ s.atr_pct | pct(false) }} del precio</div></div>
+  </div>
+
+  <ul class="small">{% for line in s.explanation %}<li>{{ line }}</li>{% endfor %}</ul>
+
+  <div class="legend">
+    <span><i class="sw" style="border-color:#3987e5"></i>Cierre {{ s.last_close | num }}</span>
+    <span><i class="sw" style="border-color:#d95926"></i>SMA{{ cfg.filter_sma }} {{ s.sma | num }}</span>
+    <span><i class="sw-band"></i>Canal: máx. {{ cfg.entry_breakout }} / mín. {{ cfg.exit_low }} sesiones previas</span>
+    <span><b class="pos">▲</b> entrada</span><span><b class="neg">▼</b> salida</span>
+    {% set show_stop = s.risk and s.risk.basis != 'hipotetica' %}
+    {% if show_stop %}<span><i class="sw" style="border-color:var(--neg); border-top-style:dashed"></i>{{ 'Stop activo' if s.risk.basis == 'en_curso' else 'Stop previsto' }}</span>{% endif %}
+  </div>
+  <div class="chart-box">
+    {{ trend_chart(s.chart, s.trades, s.risk.active_stop if show_stop else none, 'Stop', s.name ~ ': precio, SMA y canal de ruptura') }}
+  </div>
+  <div class="small faint" style="margin-top:4px">Últimas {{ s.chart.dates | length }} sesiones · pasa el ratón por el gráfico para ver los valores de cada día.</div>
+
+  <div class="two">
+    <div>
+      <h3>Riesgo {% if s.risk %}<span class="small muted">· operación {{ {'prevista': 'prevista (señal activa)', 'en_curso': 'en curso', 'hipotetica': 'hipotética, si se activara hoy'}[s.risk.basis] }}</span>{% endif %}</h3>
+      {% if s.risk %}{% set r = s.risk %}
+      <table class="data">
+        <tr><th>Precio de entrada {{ 'real' if r.basis == 'en_curso' else 'previsto' }}</th><td class="num">{{ r.entry_price | num }} {{ s.currency }}</td></tr>
+        <tr><th>Stop inicial ({{ cfg.atr_multiple }}×ATR)</th><td class="num">{{ r.initial_stop | num }} {{ s.currency }}</td></tr>
+        {% if r.active_stop != r.initial_stop %}<tr><th>Stop activo (máx. de stop inicial y mín. {{ cfg.exit_low }})</th><td class="num">{{ r.active_stop | num }} {{ s.currency }}</td></tr>{% endif %}
+        <tr><th>Riesgo por participación</th><td class="num">{{ r.risk_per_share | num }} {{ s.currency }}</td></tr>
+        <tr><th>Presupuesto de riesgo ({{ cfg.risk_pct }}% de {{ cfg.capital_eur | num(0) }})</th><td class="num">{{ r.risk_budget | num }} {{ s.currency }}</td></tr>
+        <tr><th><b>Tamaño máximo permitido</b></th><td class="num"><b>{{ r.max_shares }} participaciones</b><br><span class="faint">{{ r.position_value | num }} {{ s.currency }}</span></td></tr>
+        <tr><th>Costes estimados (entrada + salida al stop)</th><td class="num">{{ r.costs | num }} {{ s.currency }}</td></tr>
+        <tr><th>Pérdida máxima si salta el stop</th><td class="num">{{ r.total_risk | num }} {{ s.currency }}</td></tr>
+      </table>
+      {% if r.capped_by_capital %}<p class="small muted">El tamaño está limitado por el capital, no por el riesgo (sin apalancamiento).</p>{% endif %}
+      <p class="small faint">Costes: comisión {{ cfg.commission_pct }}%{% if cfg.commission_min_eur %} (mín. {{ cfg.commission_min_eur }} {{ s.currency }}){% endif %} y diferencial {{ cfg.spread_pct }}% (la mitad en cada orden). La ejecución real puede abrir con hueco por debajo del stop.</p>
+      {% else %}<p class="na">insufficient_data</p>{% endif %}
+    </div>
+    <div>
+      <h3>Histórico de la regla <span class="small muted">· desde {{ s.stats.since or '—' }}</span></h3>
+      {{ r_bars(s.trades, 'Resultado de cada operación cerrada en múltiplos de R') }}
+      <table class="data" style="margin-top:6px">
+        <tr><th>Operaciones (cerradas)</th><td class="num">{{ s.stats.trades }} ({{ s.stats.closed }})</td></tr>
+        <tr><th>Ganadoras</th><td class="num">{{ s.stats.win_rate_pct | pct(false) }}</td></tr>
+        <tr><th>R medio · R total</th><td class="num">{{ s.stats.avg_r | num }} · {{ s.stats.total_r | num }}</td></tr>
+        <tr><th>Mejor · peor</th><td class="num">{{ s.stats.best_r | num }} R · {{ s.stats.worst_r | num }} R</td></tr>
+        <tr><th>Tiempo con posición</th><td class="num">{{ s.stats.exposure_pct | pct(false) }}</td></tr>
+      </table>
+      <p class="small faint">1 R = riesgo inicial (entrada − stop). Sin costes ni impuestos. Pocas operaciones: no es una validación estadística.</p>
+    </div>
+  </div>
+
+  <details><summary>Operaciones reconstruidas ({{ s.trades | length }})</summary>
+    <div class="table-wrap"><table>
+      <tr><th>Señal</th><th>Entrada</th><th class="num">Precio</th><th class="num">Stop</th><th class="num">Partic.</th><th>Salida</th><th class="num">Precio</th><th>Motivo</th><th class="num">R</th><th class="num">%</th></tr>
+      {% for t in s.trades | reverse %}
+      <tr><td class="mono small">{{ t.signal_date }}</td><td class="mono small">{{ t.entry_date }}</td><td class="num">{{ t.entry_price | num }}</td><td class="num">{{ t.initial_stop | num }}</td><td class="num">{{ t.shares }}</td>
+          <td class="mono small">{{ t.exit_date or 'abierta' }}</td><td class="num">{{ t.exit_price | num if t.exit_price is not none else '—' }}</td>
+          <td class="small">{{ {'stop': 'Stop', 'minimo': 'Mín. ' ~ cfg.exit_low}[t.exit_reason] if t.exit_reason else '—' }}</td>
+          <td class="num {{ t.r_multiple | sign_class }}">{{ '%+.2f' | format(t.r_multiple) if t.r_multiple is not none else '—' }}</td>
+          <td class="num {{ t.return_pct | sign_class }}">{{ t.return_pct | pct if t.return_pct is not none else '—' }}</td></tr>
+      {% endfor %}
+    </table></div>
+  </details>
+  {% endif %}
+
+  {% if s.audit %}{% set a = s.audit %}
+  <details><summary>Auditoría</summary>
+    <table class="data">
+      <tr><th>Regla que genera la señal</th><td>{{ a.rule }}</td></tr>
+      <tr><th>Datos utilizados</th><td class="small">{{ a.ticker }} · {{ a.provider }} · velas diarias OHLC ajustadas · {{ a.first_date }} → {{ a.last_date }} ({{ a.observations }} sesiones){% if a.stale_cache %} · <b class="neg">caché caducada</b>{% endif %}{% if a.dropped_incomplete_bar %} · descartada la vela incompleta del {{ a.dropped_incomplete_bar }}{% endif %}</td></tr>
+      <tr><th>Huella de los datos (SHA-256)</th><td class="mono small" style="word-break:break-all">{{ a.data_sha256 }}</td></tr>
+      <tr><th>Fecha de generación</th><td class="mono small">{{ a.generated_at }}</td></tr>
+    </table>
+  </details>
+  {% endif %}
+  <p class="small faint" style="margin:10px 0 0">Experimental y teórica: la posición se reconstruye aplicando las reglas al histórico, no refleja tu cartera real. No ejecuta órdenes ni es asesoramiento financiero.</p>
+</div>

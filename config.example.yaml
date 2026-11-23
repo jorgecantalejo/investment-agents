@@ -1,0 +1,177 @@
+# Configuración del sistema de análisis. Validada con Pydantic (src/config/models.py).
+# Comprueba cambios con:  python -m src.main --validate-config
+
+report:
+  title: "Informe semanal de inversión"
+  currency: "EUR"
+  language: "es"
+  output_dir: "reports"
+
+rules:
+  tactical_budget_eur: 1000         # Capital de referencia que el informe reparte entre las entradas
+  max_single_buy_eur: 1000          # Máximo en un solo activo
+  max_assets_with_extra: 2          # Nº máximo de activos con entrada en un mismo informe
+  min_score_for_extra: 6            # Por debajo de esta puntuación -> esperar (no_extra)
+  min_ticket_eur: 50
+  rounding_eur: 10
+  tier_fractions:                   # % de max_single_buy_eur por nivel
+    small_extra: 0.33
+    normal_extra: 0.66
+    staged_extra: 1.0
+  staged_tranches: 3
+  staged_interval_days: 14
+  momentum_chase_return_12m_pct: 30 # Subidas > 30% en 12m exigen valuación no cara
+  min_cash_buffer_months: 6
+  horizon_years: 10
+
+data:
+  history_period: "5y"
+  recent_high_window_days: 365
+  stale_after_days: 5
+  min_observations: 200
+  price_cache_ttl_hours: 12
+  fundamentals_cache_ttl_hours: 24
+  convert_to_report_currency: true
+  macro_data: true                  # Series de FRED (tipos, inflación, crédito) y CAPE de Shiller, sin clave
+  macro_cache_ttl_hours: 24
+
+research:
+  enabled: true
+  provider: "tavily"
+  max_searches_per_run: 20          # Límite duro de créditos por ejecución
+  results_per_query: 5
+  search_depth: "basic"             # "advanced" cuesta 2 créditos por búsqueda
+  cache_ttl_hours: 12
+  asset_query_template: "{search_terms} market outlook valuation sentiment"
+  macro_queries:
+    - query: "global economy growth inflation outlook this week"
+    - query: "Federal Reserve ECB interest rates monetary policy latest"
+    - query: "global financial markets liquidity risk sentiment"
+  events_queries:
+    - query: "economic calendar upcoming central bank meetings key data releases next weeks"
+      time_range: "month"
+  # Webs a las que se limita cada búsqueda (por ámbito o clase de activo; un activo puede fijar las suyas con
+  # `preferred_domains`). Si dan menos de `min_preferred_results` resultados, se repite la búsqueda sin
+  # restricción al final, solo si queda presupuesto. Los datos de FRED y el CAPE no salen de aquí: Python los lee directamente.
+  min_preferred_results: 2
+  preferred_domains:
+    macro: [ecb.europa.eu, imf.org, federalreserve.gov, stlouisfed.org, tradingeconomics.com, reuters.com, ft.com]
+    events: [tradingeconomics.com, ecb.europa.eu, federalreserve.gov, reuters.com]
+    equity: [morningstar.com, researchaffiliates.com, justetf.com, trackinsight.com, aaii.com, reuters.com, ft.com]
+    commodity: [gold.org, tradingeconomics.com, morningstar.com, reuters.com, ft.com]
+    crypto: [insights.glassnode.com, coinmetrics.io, reuters.com, ft.com]
+    private_markets: [pitchbook.com, preqin.com]
+
+llm:
+  provider: "anthropic"   # "anthropic" (Claude, ANTHROPIC_API_KEY) u "openai" (OPENAI_API_KEY)
+  model: null             # null = claude-opus-5-5 (Anthropic) o el del Agents SDK (OpenAI). También: variable LLM_MODEL
+  effort: "medium"        # Solo Anthropic: low | medium | high | xhigh | max (más alto = más razonamiento y coste)
+  max_retries: 2
+  timeout_seconds: 180
+  max_concurrency: 3
+  tracing: false          # Solo OpenAI: true envía trazas a la plataforma de OpenAI
+
+defaults:
+  benchmark_ticker: "IWDA.AS"   # Comparar cada activo frente al núcleo de la cartera
+
+assets:
+  - id: "msci_world"
+    name: "MSCI World"
+    ticker: "IWDA.AS"
+    asset_class: "equity"
+    category: "equity_global"
+    currency: "EUR"
+    benchmark_ticker: "^GSPC"
+    valuation_proxy_ticker: "URTH"
+    search_terms: "MSCI World index global equities"
+
+  - id: "sp500"
+    name: "S&P 500"
+    ticker: "^GSPC"
+    asset_class: "equity"
+    category: "equity_us"
+    currency: "USD"
+    valuation_proxy_ticker: "SPY"
+    cape_reference: "sp500"          # CAPE de Shiller con percentiles históricos (solo aplica a este índice)
+    search_terms: "S&P 500"
+
+  - id: "nasdaq"
+    name: "Nasdaq 100"
+    ticker: "^NDX"
+    asset_class: "equity"
+    category: "equity_tech"
+    currency: "USD"
+    valuation_proxy_ticker: "QQQ"
+    search_terms: "Nasdaq 100 technology stocks"
+
+  - id: "gold"
+    name: "Oro"
+    ticker: "PPFB.DE"                # iShares Physical Gold ETC (IE00B4ND3602) en Xetra: el producto que se compra
+    asset_class: "commodity"
+    category: "precious_metals"
+    currency: "EUR"
+    search_terms: "gold price"
+
+  - id: "bitcoin"
+    name: "Bitcoin"
+    ticker: "BTC-USD"
+    asset_class: "crypto"
+    category: "crypto"
+    currency: "USD"
+    search_terms: "Bitcoin"
+
+  - id: "commodities"
+    name: "Materias primas"
+    ticker: "DBC"
+    asset_class: "commodity"
+    category: "commodity_basket"
+    currency: "USD"
+    search_terms: "commodity prices outlook oil copper agriculture DBC ETF"
+
+  - id: "energy"
+    name: "Energía"
+    ticker: "XLE"
+    asset_class: "equity"
+    category: "sector_energy"
+    currency: "USD"
+    valuation_proxy_ticker: "XLE"
+    search_terms: "energy stocks XLE oil companies earnings"
+
+# Perfiles: informes con nombre sobre subconjuntos de activos.
+#   python -m src.main --profiles semanal,refugio      (o /analisis semanal,refugio en Claude Code)
+# Datos, búsquedas, análisis macro y de cada activo se hacen una sola vez y se comparten entre perfiles;
+# el supervisor, los guardrails y el reparto del capital de referencia se aplican por perfil.
+profiles:
+  semanal:
+    title: "Visión completa"
+    assets: all
+  renta_variable:
+    title: "Renta variable"
+    assets: [msci_world, sp500, nasdaq, energy]
+  refugio:
+    title: "Refugio y alternativos"
+    assets: [gold, bitcoin, commodities]
+
+# Estrategias experimentales de seguimiento de tendencia (reglas deterministas en Python, sin LLM).
+#   python -m src.main --strategy gold_trend     -> reports/estrategia_AAAA-MM-DD_gold_trend.html
+# Con `asset_id`, la sección aparece también en los informes que incluyen ese activo (p. ej. perfiles semanal y refugio).
+strategies:
+  gold_trend:
+    name: "Oro — seguimiento de tendencia"
+    ticker: "PPFB.DE"               # iShares Physical Gold ETC en Xetra, en EUR
+    isin: "IE00B4ND3602"
+    currency: "EUR"
+    asset_id: "gold"
+    history_period: "max"
+    filter_sma: 200                 # Filtro: cierre > SMA200
+    entry_breakout: 20              # Entrada: cierre > máximo de las 20 sesiones previas
+    exit_low: 10                    # Salida: cierre < mínimo de las 10 sesiones previas
+    atr_window: 20
+    atr_multiple: 2.0               # Stop inicial = entrada − 2×ATR20
+    capital_eur: 20000
+    risk_pct: 1.0                   # Riesgo máximo por operación: 1% del capital (incluidos costes)
+    commission_pct: 0               # Trade Republic: 1 € fijo por orden, sin porcentaje
+    commission_min_eur: 1
+    spread_pct: 0.05
+    exchange_tz: "Europe/Berlin"
+    session_close: "17:35"          # Antes de esta hora se descarta la vela del día (aún incompleta)

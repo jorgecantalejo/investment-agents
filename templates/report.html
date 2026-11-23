@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} — {{ date }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{% include "_styles.html" %}
+</head>
+<body>
+
+{% macro cites(ids) %}{% for sid in ids %}{% if sid in source_map %}<a class="cite" href="{{ source_map[sid].url }}" target="_blank" rel="noopener" title="{{ source_map[sid].title }} ({{ source_map[sid].published_date or 'sin fecha' }})">[{{ sid }}]</a>{% endif %}{% endfor %}{% endmacro %}
+{% macro claim_list(claims) %}
+<ul>
+{% for c in claims %}
+  <li><span class="tag {{ 'tag-fact' if c.kind == 'fact' else '' }}">{{ 'hecho' if c.kind == 'fact' else 'interpretación' }}</span>{{ c.text }}{{ cites(c.source_ids) }}</li>
+{% endfor %}
+</ul>
+{% endmacro %}
+{% macro signed(v, suffix='%', digits=2) %}{% if v is none %}<span class="na">insufficient_data</span>{% else %}<span class="{{ v | sign_class }}">{{ ('%+.' ~ digits ~ 'f') | format(v) }}{{ suffix }}</span>{% endif %}{% endmacro %}
+{% macro fg_card(ind, heading) %}
+  <div class="panel">
+    <div class="label">{{ heading }}</div>
+    <div class="gauge-card">
+      {{ gauge(ind.value if ind else none, heading) }}
+      <div>
+        {% if ind and ind.value is not none %}
+          <div class="big">{{ '%.0f' | format(ind.value) }}<small> /100</small></div>
+          <div class="band">{{ fg_label(ind.value) }}</div>
+          <div class="prev">{% for k, lbl in [('1w', '1 sem'), ('1m', '1 mes'), ('1y', '1 año')] %}{% if ind.previous.get(k) is not none %}<span>{{ lbl }} <b>{{ '%.0f' | format(ind.previous[k]) }}</b></span>{% endif %}{% endfor %}</div>
+        {% else %}
+          <div class="na">insufficient_data</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="small faint" style="margin-top:8px">{{ ind.source if ind else 'Sin fuente' }}{% if ind and ind.as_of %} · {{ ind.as_of }}{% endif %}</div>
+  </div>
+{% endmacro %}
+{% macro kpi(ind, mode) %}
+  <div class="panel kpi">
+    <div class="label">{{ ind.name if ind else '—' }}</div>
+    {% if ind and ind.value is not none %}
+      {% set p = ind.previous.get('1m') %}
+      <div class="value">{{ '%.2f' | format(ind.value) }}{{ ind.unit }}</div>
+      <div class="delta">
+        {% if p is not none %}{% if mode == 'bp' %}{{ signed((ind.value - p) * 100, ' pb', 0) }}{% elif mode == 'pts' %}{{ signed(ind.value - p, ' pts') }}{% else %}{{ signed((ind.value / p - 1) * 100) }}{% endif %} <span class="faint">vs hace 1 mes</span>
+        {% else %}<span class="na">insufficient_data</span>{% endif %}
+      </div>
+      <div class="hint">{{ ind.note }}</div>
+    {% else %}
+      <div class="value na">insufficient_data</div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="brand-mark"></span>{{ title }}</div>
+    <div class="meta">
+      <span>Fecha <b>{{ date }}</b></span>
+      <span>Moneda <b>{{ currency }}</b></span>
+      <span>Activos <b>{{ cards | length }}</b></span>
+    </div>
+    <nav class="nav"><a href="#mercado">Mercado</a><a href="#activos">Activos</a><a href="#eventos">Eventos</a><a href="#comparativa">Comparativa</a><a href="#fichas">Fichas</a>{% if strategies %}<a href="#estrategias">Tendencia</a>{% endif %}<a href="#auditoria">Auditoría</a></nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ================= CABECERA: PANORAMA DE MERCADO ================= -->
+<div class="section-head" id="mercado"><div><div class="eyebrow">Panorama de mercado</div><h2>Régimen macroeconómico</h2></div><span class="small faint mono">Datos a {{ date }}</span></div>
+
+<div class="hero">
+  {{ fg_card(indicators.get('fear_greed_stocks'), 'Miedo y codicia · acciones') }}
+  {{ fg_card(indicators.get('fear_greed_crypto'), 'Miedo y codicia · cripto') }}
+  <div class="panel">
+    <div class="label">Riesgo para la renta variable</div>
+    {% if macro %}
+      <div style="display:flex; align-items:baseline; gap:10px; margin-top:10px">
+        <div class="big">{{ macro.equity_risk_score }}<small> /10</small></div>
+        <span class="pill lvl-{{ macro.equity_risk_level }}">{{ macro.equity_risk_level | level_label }}</span>
+      </div>
+      <div class="thermo">
+        <div class="thermo-track"><span class="thermo-mark" style="left: {{ macro.equity_risk_score * 10 }}%" title="{{ macro.equity_risk_score }}/10"></span></div>
+        <div class="thermo-scale"><span>0 · bajo</span><span>5</span><span>10 · alto</span></div>
+      </div>
+      <div class="small muted" style="margin-top:12px">Régimen <b>{{ macro.regime | term | lower }}</b> · confianza {{ macro.confidence | level_label_f | lower }}</div>
+    {% else %}
+      <div class="na" style="margin-top:10px">insufficient_data</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpis">
+  {{ kpi(indicators.get('vix'), 'pts') }}
+  {{ kpi(indicators.get('us10y'), 'bp') }}
+  {{ kpi(indicators.get('dxy'), 'pct') }}
+  {{ kpi(indicators.get('eurusd'), 'pct') }}
+</div>
+
+{% set macro_inds = run.indicators | selectattr('kind', 'in', ['rates', 'inflation', 'activity', 'credit', 'valuation']) | rejectattr('id', 'equalto', 'us10y') | list %}
+{% if macro_inds %}
+<div class="label" style="margin-top:16px">Datos macro oficiales (FRED) y valuación histórica</div>
+<div class="kpis">
+  {% for ind in macro_inds %}{{ kpi(ind, 'bp' if ind.unit == '%' else 'pts') }}{% endfor %}
+</div>
+{% endif %}
+
+<div class="regime">
+  {% for lbl, val, kind in [('Régimen', macro.regime if macro else none, 'term'), ('Crecimiento', macro.growth_trend if macro else none, 'term'), ('Inflación', macro.inflation_trend if macro else none, 'term'), ('Tipos', macro.rates_trend if macro else none, 'term'), ('Liquidez', macro.liquidity if macro else none, 'term'), ('Riesgo global', supervisor.overall_risk if supervisor else none, 'level')] %}
+  <div class="chip-tile"><div class="label">{{ lbl }}</div><div class="v">{% if val %}{{ val | term if kind == 'term' else val | level_label }}{% else %}<span class="na">insufficient_data</span>{% endif %}</div></div>
+  {% endfor %}
+</div>
+
+<div class="panel conclusion">
+  <div class="alloc">
+    <div class="label">Capital asignado</div>
+    <div class="big">{{ total_extra | num(0) }} <small>{{ currency }}</small></div>
+    <div class="small muted">{{ allocated_pct }}% de {{ budget | num(0) }} {{ currency }} de referencia</div>
+    <div class="alloc-bar"><span style="width: {{ allocated_pct }}%"></span></div>
+    {% if funded %}
+      <ul class="small" style="margin-top:12px">
+      {% for d in funded %}<li><b>{{ d.name }}</b> <span class="mono">{{ d.amount_eur | num(0) }} {{ currency }}</span> · {{ d.final_action | action_label | lower }}{% if d.tranches | length > 1 %} ({{ d.tranches | length }} tramos){% endif %}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="small" style="margin:12px 0 0"><b>No se propone ninguna entrada</b> en esta ejecución.</p>
+    {% endif %}
+  </div>
+  <div class="conclusion-body">
+    <h3 style="margin-top:0">Resumen ejecutivo</h3>
+    {% if supervisor %}
+      {% if run.supervisor_is_fallback %}<p class="small muted">Síntesis automática: el supervisor LLM no estuvo disponible.</p>{% endif %}
+      <p style="margin:0 0 8px">{{ supervisor.executive_summary }}</p>
+      {% if supervisor.key_takeaways %}<ul class="small">{% for k in supervisor.key_takeaways %}<li>{{ k }}</li>{% endfor %}</ul>{% endif %}
+      <div class="two">
+        <div>
+          <div class="label">Mejor momento relativo</div>
+          {% if best %}<ol class="small">{% for b in best %}<li>{{ b }}</li>{% endfor %}</ol>{% else %}<p class="na">Ninguno destacado</p>{% endif %}
+        </div>
+        <div>
+          <div class="label">No conviene entrar ahora</div>
+          {% if avoid %}<ul class="small">{% for name, reason in avoid %}<li><b>{{ name }}</b>: {{ reason }}</li>{% endfor %}</ul>{% else %}<p class="na">Sin indicaciones</p>{% endif %}
+        </div>
+      </div>
+      {% if supervisor.execution_plan %}<div style="margin-top:12px"><div class="label">Plan de ejecución</div><p class="small" style="margin:4px 0 0">{{ supervisor.execution_plan }}</p></div>{% endif %}
+    {% else %}
+      <p class="na">Sin síntesis cualitativa (modo {{ run.mode }}): el informe solo contiene datos objetivos.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+  {% if macro %}
+    <div class="label">Contexto macro</div>
+    <p style="margin:6px 0 0">{{ macro.summary }}</p>
+    <details><summary>Hechos, interpretaciones y riesgos globales</summary>
+      {% if macro.claims %}{{ claim_list(macro.claims) }}{% endif %}
+      {% if macro.key_risks %}<h3>Riesgos globales</h3><ul>{% for r in macro.key_risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+    </details>
+  {% else %}
+    <p class="na" style="margin:0">Análisis macro no disponible en esta ejecución.</p>
+  {% endif %}
+</div>
+
+<!-- ================= TARJETAS RESUMEN ================= -->
+<div class="section-head" id="activos"><div><div class="eyebrow">Activos analizados</div><h2>Resumen por activo</h2></div><span class="small faint">Rentabilidades en {{ currency }} · pulsa una tarjeta para abrir su ficha</span></div>
+<div class="tiles">
+{% for c in cards %}
+  {% set s = c.snapshot %}{% set p = s.prices %}{% set a = c.analysis %}{% set d = c.decision %}
+  <a class="tile" href="#asset-{{ s.asset_id }}">
+    <div class="tile-head">
+      <div><div class="tile-name">{{ s.name }}</div><div class="ticker">{{ s.ticker }} · {{ s.asset_class }}</div></div>
+      {{ score_ring(a.opportunity_score if a else none) }}
+    </div>
+    {% if p %}
+      <div class="tile-price">{{ p.last_price | num }} <span class="small muted">{{ p.currency }}</span></div>
+      {{ sparkline(p.sparkline, s.name ~ ' · 12 meses (' ~ p.currency ~ ')') }}
+      <div class="tile-rets">
+        {% for k in ['1m', '6m', '12m'] %}<div><div class="label">{{ k }}</div><div class="r">{{ signed(p.returns_report_ccy_pct[k]) }}</div></div>{% endfor %}
+      </div>
+      <div class="tile-foot">
+        <span class="pill trend-{{ p.quant_trend }}">{{ p.quant_trend | term }}</span>
+        {% if d %}<span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span>{% endif %}
+        <span class="tile-link">Ficha →</span>
+      </div>
+    {% else %}
+      <div class="na">Sin datos de mercado: {{ s.error }}</div>
+    {% endif %}
+  </a>
+{% endfor %}
+</div>
+
+<!-- ================= EVENTOS ================= -->
+<div class="section-head" id="eventos"><div><div class="eyebrow">Calendario</div><h2>Próximos eventos relevantes</h2></div></div>
+<div class="panel">
+  {% if macro and macro.upcoming_events %}
+    {% for e in macro.upcoming_events | sort(attribute='date') %}
+    <div class="event">
+      <div class="event-date {{ '' if e.date[:1].isdigit() else 'tbd' }}">{{ e.date if e.date[:1].isdigit() else 'Fecha por confirmar' }}</div>
+      <div><b>{{ e.event }}</b><div class="small muted">{{ e.relevance }}</div></div>
+      <div>{{ cites(e.source_ids) }}</div>
+    </div>
+    {% endfor %}
+    <p class="small faint" style="margin:10px 0 0">Fechas extraídas de fuentes web: confírmalas en el calendario oficial antes de actuar.</p>
+  {% else %}
+    <p class="na" style="margin:0">No hay eventos verificados con fuente. Consulta el calendario del BCE, la Fed y los datos macro de la semana.</p>
+  {% endif %}
+</div>
+
+<!-- ================= COMPARATIVA ================= -->
+<div class="section-head" id="comparativa"><div><div class="eyebrow">Datos objetivos</div><h2>Comparativa de activos</h2></div><span class="small faint">Rentabilidades en {{ currency }}</span></div>
+<div class="panel" style="padding:0; overflow:hidden">
+  <div class="table-wrap"><table class="compare">
+    <tr>
+      <th>Activo</th><th class="num">Precio</th>
+      <th class="num">1m</th><th class="num">3m</th><th class="num">6m</th><th class="num">12m</th>
+      <th class="num">12m vs bench.</th><th>&gt;SMA 50/200</th><th>Tendencia</th>
+      <th class="num">Drawd.</th><th class="num">Vol.</th><th>Valuac.</th><th>Sentim.</th><th class="num">Punt.</th><th>Acción</th>
+    </tr>
+    {% for c in cards %}
+    {% set p = c.snapshot.prices %}{% set a = c.analysis %}{% set d = c.decision %}
+    <tr>
+      <td><a href="#asset-{{ c.snapshot.asset_id }}"><b>{{ c.snapshot.name }}</b></a><br><span class="small faint mono">{{ c.snapshot.ticker }}</span></td>
+      {% if p %}
+      <td class="num">{{ p.last_price | num }} <span class="faint">{{ p.currency }}</span></td>
+      {% for k in ['1m','3m','6m','12m'] %}<td class="num">{{ signed(p.returns_report_ccy_pct[k]) }}</td>{% endfor %}
+      <td class="num">{{ signed(p.relative_vs_benchmark_pp['12m'], ' pp') }}</td>
+      <td class="mono" style="white-space:nowrap">{{ p.above_sma50 | yesno }} / {{ p.above_sma200 | yesno }}</td>
+      <td>{{ p.quant_trend | term }}</td>
+      <td class="num">{{ signed(p.drawdown_from_recent_high_pct) }}</td>
+      <td class="num">{{ p.volatility_annualized_pct | pct(false) }}</td>
+      {% for val in [a.valuation if a else none, a.sentiment if a else none] %}<td>{% if val and val != 'insufficient_data' %}{{ val | term }}{% else %}<span class="na" title="insufficient_data">s/d</span>{% endif %}</td>{% endfor %}
+      <td class="num {{ (a.opportunity_score if a else none) | score_class }}"><b>{{ a.opportunity_score if a else '—' }}</b></td>
+      <td>{% if d %}<span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span>{% endif %}</td>
+      {% else %}
+      <td colspan="14" class="na">Sin datos de mercado: {{ c.snapshot.error }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">«s/d» = insufficient_data (dato no disponible). Rentabilidades en {{ currency }} (convertidas desde la divisa del activo cuando aplica). «pp» = puntos porcentuales frente al benchmark. Drawdown desde el máximo de 12 meses. Tendencia calculada en Python (precio vs SMA200, SMA50 vs SMA200 y rentabilidad 6m).</p>
+</div>
+
+<!-- ================= FICHAS DETALLADAS ================= -->
+<div class="section-head" id="fichas"><div><div class="eyebrow">Detalle</div><h2>Fichas por activo</h2></div></div>
+<div class="cards">
+{% for c in cards %}
+{% set s = c.snapshot %}{% set p = s.prices %}{% set a = c.analysis %}{% set d = c.decision %}
+<article class="card" id="asset-{{ s.asset_id }}">
+  <div class="card-head">
+    <div>
+      <h3 style="margin:0; font-size:1.05rem">{{ s.name }}</h3>
+      <div class="ticker">{{ s.ticker }} · {{ s.asset_class }} · datos {{ s.quality.level | term | lower }}</div>
+      {% if d %}<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        <span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span>
+        {% if d.amount_eur > 0 %}<span class="mono">{{ d.amount_eur | num(0) }} {{ currency }}</span>{% endif %}
+        {% if a %}<span class="small muted">convicción {{ a.conviction | level_label_f | lower }}</span>{% endif %}
+        {% if d.final_action != d.proposed_action %}<span class="small faint">propuesto: {{ d.proposed_action | action_label | lower }}, ajustado por reglas</span>{% endif %}
+      </div>{% endif %}
+    </div>
+    {{ score_ring(a.opportunity_score if a else none) }}
+  </div>
+  {% if p %}<div style="margin-top:12px">{{ sparkline(p.sparkline, s.name ~ ' · 12 meses (' ~ p.currency ~ ')', 360, 56) }}</div>{% endif %}
+
+  {% if a %}
+  <div class="sig">
+    <div><div class="label">Valuación</div><div class="v">{{ a.valuation | term }}</div></div>
+    <div><div class="label">Momentum</div><div class="v">{{ a.momentum | term }}</div></div>
+    <div><div class="label">Sentimiento</div><div class="v">{{ a.sentiment | term }}</div></div>
+  </div>
+  <p>{{ a.summary }}</p>
+  {% if a.key_risks %}<h3>Riesgos</h3><ul class="small">{% for r in a.key_risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if d and d.conditions %}<h3>Condiciones de entrada</h3><ul class="small">{% for x in d.conditions %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  {% if d and d.invalidation %}<h3>Invalidación de la tesis</h3><ul class="small">{% for x in d.invalidation %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  <details><summary>Justificación de las señales</summary>
+    <p class="small"><b>Valuación:</b> {{ a.valuation_rationale }}</p>
+    <p class="small"><b>Momentum:</b> {{ a.momentum_rationale }}</p>
+    <p class="small"><b>Sentimiento:</b> {{ a.sentiment_rationale }}</p>
+    {% if a.claims %}{{ claim_list(a.claims) }}{% endif %}
+  </details>
+  {% else %}
+  <p class="na">Sin análisis cualitativo para este activo.</p>
+  {% endif %}
+
+  <details {{ 'open' if not a else '' }}><summary>Datos objetivos</summary>
+  {% if p %}
+    <table class="data">
+      <tr><th>Precio ({{ p.last_date }})</th><td class="num">{{ p.last_price | num }} {{ p.currency }}</td></tr>
+      {% for k in ['1m','3m','6m','12m'] %}
+      <tr><th>Rent. {{ k }} ({{ p.currency }} / {{ p.report_currency }})</th><td class="num">{{ signed(p.returns_pct[k]) }} / {{ signed(p.returns_report_ccy_pct[k]) }}</td></tr>
+      {% endfor %}
+      <tr><th>SMA 50 / SMA 200</th><td class="num">{{ p.sma50 | num }} / {{ p.sma200 | num }}</td></tr>
+      <tr><th>Por encima SMA 50 / 200</th><td class="num">{{ p.above_sma50 | yesno }} / {{ p.above_sma200 | yesno }}</td></tr>
+      <tr><th>Máximo 12m ({{ p.recent_high_date or '—' }})</th><td class="num">{{ p.recent_high | num }}</td></tr>
+      <tr><th>Drawdown actual / máx. 12m</th><td class="num">{{ signed(p.drawdown_from_recent_high_pct) }} / {{ signed(p.max_drawdown_window_pct) }}</td></tr>
+      <tr><th>Volatilidad anualizada</th><td class="num">{{ p.volatility_annualized_pct | pct(false) }}</td></tr>
+      {% if p.benchmark_ticker %}
+      <tr><th>vs {{ p.benchmark_ticker }} (3m / 12m)</th><td class="num">{{ signed(p.relative_vs_benchmark_pp['3m'], ' pp') }} / {{ signed(p.relative_vs_benchmark_pp['12m'], ' pp') }}</td></tr>
+      {% endif %}
+      <tr><th>Tendencia cuantitativa</th><td class="num">{{ p.quant_trend | term }}</td></tr>
+      {% if s.valuation %}{% set v = s.valuation %}
+      <tr><th colspan="2" style="padding-top:10px; color:var(--text)">Valuación ({{ v.provider }}, {{ v.source_ticker }})</th></tr>
+      <tr><th>PER trailing / forward</th><td class="num">{{ v.trailing_pe | num }} / {{ v.forward_pe | num }}</td></tr>
+      <tr><th>CAPE{% if v.cape_source %} <span class="faint small">({{ v.cape_source }})</span>{% endif %}</th><td class="num">{{ v.cape | num }}</td></tr>
+      <tr><th>EV/EBITDA · P/S</th><td class="num">{{ v.ev_ebitda | num }} · {{ v.price_to_sales | num }}</td></tr>
+      <tr><th>Dividend yield</th><td class="num">{{ v.dividend_yield_pct | pct(false) }}</td></tr>
+      {% set pcts = v.percentiles | dictsort | selectattr(1, 'ne', none) | list %}
+      <tr><th>Percentiles históricos</th><td class="num">{% if pcts %}{% for k, val in pcts %}{{ {'cape': 'CAPE (toda la historia)', 'cape_30y': 'CAPE (30 años)'}.get(k, k) }} p{{ '%.0f' | format(val) }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}<span class="na">insufficient_data</span>{% endif %}</td></tr>
+      {% endif %}
+    </table>
+    {% if s.quality.issues %}<p class="small muted">Limitaciones: {{ s.quality.issues | join('; ') }}</p>{% endif %}
+  {% else %}
+    <p class="na">{{ s.error }}</p>
+  {% endif %}
+  </details>
+
+  <details><summary>Fuentes ({{ c.sources | length }})</summary>
+  {% if c.sources %}
+    <ul class="small">{% for src in c.sources %}<li><span class="mono faint">[{{ src.id }}]</span> <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.title }}</a> <span class="faint">· {{ src.published_date or 'sin fecha' }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="na">Sin fuentes web.</p>{% endif %}
+  </details>
+  <div style="margin-top:12px"><a class="back" href="#activos">↑ Volver al resumen</a></div>
+</article>
+{% endfor %}
+</div>
+
+{% if strategies %}
+<!-- ================= ESTRATEGIAS EXPERIMENTALES ================= -->
+<div class="section-head" id="estrategias"><div><div class="eyebrow">Experimental</div><h2>Seguimiento de tendencia</h2></div><span class="small faint">Reglas deterministas en Python · independiente de la puntuación de arriba</span></div>
+{% for s in strategies %}{% include "_trend.html" %}{% endfor %}
+{% endif %}
+
+<!-- ================= AUDITORÍA ================= -->
+<div class="section-head" id="auditoria"><div><div class="eyebrow">Auditoría</div><h2>Señales contradictorias</h2></div></div>
+<div class="panel {{ 'accent-l' if contradictions else '' }}" style="padding:0; overflow:hidden">
+  {% if contradictions %}
+  <div class="table-wrap"><table>
+    <tr><th>Activos</th><th>Contradicción</th><th>Cómo se resuelve</th><th>Origen</th></tr>
+    {% for c in contradictions %}
+    <tr><td>{% for aid in c.asset_ids %}{{ names.get(aid, aid) }}{{ ', ' if not loop.last }}{% else %}Global{% endfor %}</td><td>{{ c.description }}</td><td>{{ c.resolution }}</td><td class="small faint mono">{{ c.origin }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:0; padding:14px 16px">No se han detectado contradicciones relevantes.</p>
+  {% endif %}
+</div>
+
+<div class="section-head"><h2>Datos faltantes y limitaciones</h2></div>
+<div class="panel">
+  {% if missing_by_scope %}
+  <div style="display:grid; gap:14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))">
+  {% for scope, items in missing_by_scope.items() %}
+    <div><div class="label">{{ scope }}</div>
+    <ul class="small">{% for m in items %}<li>{{ m.item }}{% if m.impact %} <span class="faint">→ {{ m.impact }}</span>{% endif %}</li>{% endfor %}</ul></div>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted" style="margin:0">Sin limitaciones relevantes registradas.</p>{% endif %}
+  {% if run.errors %}<h3>Errores de la ejecución</h3><ul class="small">{% for e in run.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+</div>
+
+<div class="section-head"><h2>Tabla final de recomendaciones</h2></div>
+<div class="panel" style="padding:0; overflow:hidden">
+  <div class="table-wrap"><table>
+    <tr><th>Activo</th><th class="num">Punt.</th><th>Analista</th><th>Supervisor</th><th>Final</th><th class="num">Importe</th><th>Motivo e invalidación</th></tr>
+    {% for d in decisions %}
+    <tr>
+      <td><b>{{ d.name }}</b></td>
+      <td class="num {{ d.opportunity_score | score_class }}"><b>{{ d.opportunity_score if d.opportunity_score is not none else '—' }}</b></td>
+      <td class="small">{{ d.analyst_action | action_label }}</td>
+      <td class="small">{{ d.supervisor_action | action_label }}</td>
+      <td><span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span></td>
+      <td class="num">{{ d.amount_eur | num(0) }} {{ currency }}</td>
+      <td class="small">{{ d.rationale }}{% if d.invalidation %}<br><span class="faint">Invalidación:</span> {{ d.invalidation | join('; ') }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+
+<div class="section-head"><h2>Guardrails aplicados</h2></div>
+<div class="panel">
+  {% if guardrails %}
+  <details {{ 'open' if guardrails | selectattr('severity', 'equalto', 'blocking') | list else '' }} style="margin:0; border:0; padding:0"><summary>{{ guardrails | length }} ajustes y avisos</summary>
+  <div class="table-wrap" style="margin-top:8px"><table>
+    <tr><th>Activo</th><th>Regla</th><th>Detalle</th><th>Cambio</th></tr>
+    {% for g in guardrails %}
+    <tr><td>{{ names.get(g.asset_id, g.asset_id or 'Global') }}</td><td><span class="pill {{ 'lvl-high' if g.severity == 'blocking' else 'lvl-medium' if g.severity == 'warning' else '' }}">{{ g.rule }}</span></td><td class="small">{{ g.message }}</td><td class="small">{% if g.before %}{{ g.before | action_label }} → {{ g.after | action_label }}{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  </details>
+  {% else %}<p class="muted" style="margin:0">No se aplicó ningún ajuste: todas las salidas del LLM cumplieron las reglas.</p>{% endif %}
+</div>
+
+<div class="section-head"><h2>Fuentes</h2></div>
+<div class="panel">
+  {% if sources %}
+  <p class="small faint mono" style="margin-top:0">Búsquedas: {{ run.search_usage.performed }} / {{ run.search_usage.budget }} · caché: {{ run.search_usage.cache_hits }} · fallidas: {{ run.search_usage.failed }}</p>
+  <ol class="small">
+    {% for s in sources %}<li value="{{ s.id[1:] }}"><span class="mono faint">[{{ s.id }}]</span> <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a> <span class="faint">· publicado {{ s.published_date or 'sin fecha' }} · consultado {{ s.retrieved_at[:10] }} · {{ names.get(s.scope, s.scope) }}</span></li>{% endfor %}
+  </ol>
+  {% else %}<p class="na">No se usaron fuentes web en esta ejecución.</p>{% endif %}
+  <p class="small faint" style="margin-bottom:0">Datos de mercado: Yahoo Finance (yfinance), precios ajustados de cierre.{% for i in run.indicators if i.kind == 'sentiment' %} {{ i.name }}: {{ i.source }}.{% endfor %}{% if run.indicators | selectattr('kind', 'in', ['inflation', 'activity', 'credit']) | selectattr('value', 'ne', none) | list %} Series macro: FRED (Reserva Federal de St. Louis).{% endif %}{% if run.indicators | selectattr('id', 'equalto', 'cape_sp500') | selectattr('value', 'ne', none) | list %} CAPE: multpl.com, con datos de R. Shiller.{% endif %}</p>
+</div>
+
+<div class="panel disclaimer" style="margin-top:20px">
+  <b>Aviso importante:</b> este informe se genera automáticamente con fines informativos y educativos.
+  No constituye asesoramiento financiero personalizado ni una recomendación de compra o venta: no tiene en cuenta la
+  situación, los objetivos ni la tolerancia al riesgo de cada persona. Los datos pueden contener errores o retrasos y
+  los análisis de IA pueden equivocarse. Las rentabilidades pasadas no garantizan rentabilidades futuras. Revisa siempre
+  la información y decide bajo tu propia responsabilidad.
+</div>
+
+<footer>Generado {{ run.created_at }} · ejecución {{ run.run_id }} · modo {{ run.mode }} · {% for k, v in run.versions.items() %}{{ k }} {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</footer>
+</main>
+</body>
+</html>
