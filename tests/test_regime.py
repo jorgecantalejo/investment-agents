@@ -1,4 +1,4 @@
-"""Estrategia de régimen semanal del S&P 500 (SMA40 con banda): indicadores de contexto, regla, choque de un día y resultado."""
+"""Estrategia de régimen semanal del S&P 500: salida bajista, anti-pánico, emergencia por VIX, entrada y resultado."""
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -26,8 +26,8 @@ def ohlcv(close: list[float], volume: list[float] | None = None, start: str = "2
 
 
 def readings(**kw) -> Readings:
-    base = dict(close=110, sma_fast=105, sma_slow=100, dd25=2, cmf=0.1, obv_div=False, vix=15.0,
-                prev_cmf_negative=False, prev_vix_high=False)
+    base = dict(close=110, sma_fast=105, sma_slow=100, sma_slow_prev=98, week_ret=0.01, rsi=55.0, vix=15.0,
+                dd25=2, cmf=0.1, obv_div=False)
     return Readings(**{**base, **kw})
 
 
@@ -47,62 +47,62 @@ def test_cmf_sign_follows_close_location():
     assert chaikin_money_flow(df, 5).iloc[-1] < -0.8
 
 
-def test_decide_band_exit():
-    assert decide(100, readings(), P) == (100, [])
-    # Perforar la SMA40 dentro de la banda (−1,5%) no da orden, aunque el flujo sea malo
-    assert decide(100, readings(close=99, sma_fast=95, dd25=12, cmf=-0.3, obv_div=True, vix=40.0), P)[0] == 100
-    new, reasons = decide(100, readings(close=98.4), P)
-    assert new == 0 and "banda de salida" in reasons[0]
+def test_below_rising_average_is_not_bear():
+    # Cierre bajo la SMA40 pero con la media aún subiendo: se sigue dentro, aunque el flujo sea malo
+    assert decide(100, False, readings(close=95, dd25=12, cmf=-0.3, obv_div=True), P) == (100, False, [])
 
 
-def test_decide_band_entry():
-    assert decide(0, readings(close=90), P) == (0, [])
-    # Sobre la media pero dentro de la banda de entrada (+1%): se sigue fuera
-    assert decide(0, readings(close=100.9), P)[0] == 0
-    new, reasons = decide(0, readings(close=101.1, sma_fast=95), P)
-    assert new == 100 and "banda de entrada" in reasons[0]
+def test_bear_exit():
+    new, deferred, reasons = decide(100, False, readings(close=95, sma_slow_prev=101), P)
+    assert (new, deferred) == (0, False) and "mercado bajista" in reasons[0]
 
 
-def test_band_zero_is_plain_sma():
-    p = RegimeParams(exit_band_pct=0, enter_band_pct=0)
-    assert decide(100, readings(close=99.9), p)[0] == 0
-    assert decide(0, readings(close=100.1), p)[0] == 100
+def test_stretched_week_defers_bear_exit_once():
+    bear_panic = readings(close=95, sma_slow_prev=101, week_ret=-0.05, rsi=40.0)
+    assert decide(100, False, bear_panic, P) == (100, True, [])
+    assert decide(100, False, readings(close=95, sma_slow_prev=101, rsi=25.0), P) == (100, True, [])
+    # El viernes siguiente sale si sigue bajista, aunque vuelva a estar estirado
+    new, deferred, reasons = decide(100, True, bear_panic, P)
+    assert (new, deferred) == (0, False) and "aplazada" in reasons[0]
+    # Y se queda si ha recuperado la media
+    assert decide(100, True, readings(close=102, sma_slow_prev=101), P) == (100, False, [])
 
 
-def test_flow_warnings_are_context_only():
-    r = readings(dd25=9, cmf=-0.2, prev_cmf_negative=True, obv_div=True, vix=30.0, prev_vix_high=True)
-    assert len(r.flow_warnings(P)) == 4
-    assert decide(100, r, P)[0] == 100
+def test_vix_emergency_exits_without_waiting():
+    # Media subiendo y semana de pánico: sin emergencia no saldría
+    crash = readings(close=95, week_ret=-0.11, rsi=20.0, vix=40.0)
+    new, _, reasons = decide(100, False, crash, P)
+    assert new == 0 and "emergencia" in reasons[0]
+    # VIX alto con el cierre aún sobre la media: no hay emergencia
+    assert decide(100, False, readings(vix=40.0), P)[0] == 100
+    # Sin VIX la emergencia queda desactivada
+    assert decide(100, False, readings(close=95, week_ret=-0.11, vix=None), P)[0] == 100
 
 
-def test_replay_whipsaw_inside_band_makes_no_switch():
+def test_entry_needs_band():
+    assert decide(0, False, readings(close=100.9), P)[0] == 0
+    new, _, reasons = decide(0, False, readings(close=101.1), P)
+    assert new == 100 and "línea de entrada" in reasons[0]
+
+
+def test_flow_context_never_trades():
+    assert decide(100, False, readings(dd25=15, cmf=-0.5, obv_div=True), P)[0] == 100
+
+
+def test_weekly_frame_slope_and_week_return():
+    p = RegimeParams(**SMALL, slope_weeks=2)
+    close = [c for c in np.linspace(100, 120, 12) for _ in range(5)]
+    w = weekly_frame(daily_indicators(ohlcv(close), None, p), p)
+    assert w["sma_slow_prev"].iloc[-1] == pytest.approx(w["sma_slow"].iloc[-3])
+    assert w["week_ret"].iloc[-1] == pytest.approx(w["close"].iloc[-1] / w["close"].iloc[-2] - 1)
+
+
+def test_replay_rising_average_dip_makes_no_switch():
     p = RegimeParams(**SMALL)
-    close = [100.0] * 25 + [99.5, 100.4, 99.6, 100.3] * 3  # viernes alternos ±0,5% alrededor de la media
-    weekly_close = [c for c in close for _ in range(5)]
-    d = daily_indicators(ohlcv(weekly_close), None, p)
+    close = list(np.linspace(100, 160, 100)) + [150.0] * 5 + list(np.linspace(152, 170, 20))
+    d = daily_indicators(ohlcv(close), None, p)
     rep = replay(d, weekly_frame(d, p), p)
-    assert rep.switches == [] and rep.exposure == 0
-
-
-def test_single_friday_crash_is_evaluated_with_thursday_close():
-    p = RegimeParams(**SMALL)
-    close = list(np.linspace(100, 130, 60))
-    close[-1] = close[-2] * 0.91  # viernes −9%
-    df = ohlcv(close)
-    assert df.index[-1].weekday() == 4
-    w = weekly_frame(daily_indicators(df, None, p), p)
-    assert bool(w["shock"].iloc[-1])
-    assert w["close"].iloc[-1] == pytest.approx(close[-2])
-
-
-def test_one_day_crash_never_exits_to_zero():
-    p = RegimeParams(**SMALL)
-    close = list(np.linspace(100, 140, 80)) + [140 * 0.90, 140 * 0.97, 140 * 0.99, 140, 141]  # lunes −10% y rebote
-    vol = [1000.0] * 80 + [5000.0, 3000.0, 2000.0, 1500.0, 1200.0]
-    df = ohlcv(close, vol, start="2024-01-01")
-    d = daily_indicators(df, None, p)
-    rep = replay(d, weekly_frame(d, p), p)
-    assert all(s.to_pct != 0 for s in rep.switches)
+    assert rep.switches == [] and rep.exposure == 100
 
 
 def test_week_is_complete():
@@ -137,9 +137,9 @@ def test_build_regime_strategy_uptrend():
     res = build_regime_strategy("sp500_regime", regime_cfg(), FakeService(ohlcv(close, list(rng.uniform(900, 1100, 400)))), now=AFTER_CLOSE)
     assert res.error is None
     assert res.exposure == 100 and res.trend == "alcista"
-    assert {c.id for c in res.checks} == {"trend", "cross", "dd", "cmf", "obv", "vix"}
-    assert res.exit_line < res.sma_slow < res.enter_line and len(res.chart.exit_line) == len(res.chart.dates)
-    assert next(c for c in res.checks if c.id == "vix").status == "na"  # sin VIX la regla sigue funcionando
+    assert {c.id for c in res.checks} == {"emergency", "trend", "panic", "entry", "cross", "dd", "cmf", "obv"}
+    assert res.sma_slow < res.enter_line and len(res.chart.enter_line) == len(res.chart.dates)
+    assert next(c for c in res.checks if c.id == "emergency").status == "na"  # sin VIX la regla bajista sigue funcionando
     assert set(res.perf) == {"strategy", "sma_only", "buy_hold"}
     assert res.explanation and res.chart.dates
 
@@ -157,4 +157,6 @@ def test_config_validation():
     with pytest.raises(ValueError):
         RegimeStrategyConfig(name="x", dd_aligned_max=7, dd_reduce=7)
     with pytest.raises(ValueError):
-        RegimeStrategyConfig(name="x", exit_band_pct=-1)
+        RegimeStrategyConfig(name="x", enter_band_pct=-1)
+    with pytest.raises(ValueError):
+        RegimeStrategyConfig(name="x", panic_rsi=0)

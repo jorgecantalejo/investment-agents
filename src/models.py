@@ -314,7 +314,7 @@ class RegimeChart(BaseModel):
     close: list[float] = Field(default_factory=list)
     sma_fast: list[float | None] = Field(default_factory=list)
     sma_slow: list[float | None] = Field(default_factory=list)
-    exit_line: list[float | None] = Field(default_factory=list)
+    enter_line: list[float | None] = Field(default_factory=list)
     exposure: list[int | None] = Field(default_factory=list)
     dd25: list[int | None] = Field(default_factory=list)
 
@@ -326,7 +326,7 @@ class FlowDay(BaseModel):
 
 
 class RegimeStrategyResult(BaseModel):
-    """Estado de la estrategia de régimen semanal (SMA40 con banda de tolerancia). Todo calculado por Python."""
+    """Estado de la estrategia de régimen semanal (salir solo en bajista, con emergencia por VIX). Todo calculado por Python."""
 
     id: str
     name: str
@@ -340,12 +340,14 @@ class RegimeStrategyResult(BaseModel):
     provisional_exposure: int | None = Field(None, description="Lo que diría la regla si la semana en curso cerrara hoy")
     provisional_reasons: list[str] = Field(default_factory=list)
     week_complete: bool = True
-    shock_week: bool = False
+    deferred: bool = Field(False, description="Salida bajista aplazada por semana de pánico: se decide el próximo viernes")
     last_date: str | None = None
     last_close: float | None = None
     sma_fast: float | None = None
     sma_slow: float | None = None
-    exit_line: float | None = Field(None, description="Cierre semanal por debajo del cual se sale (SMA lenta − banda)")
+    sma_slow_prev: float | None = Field(None, description="SMA lenta de hace `slope_weeks` semanas (pendiente)")
+    week_ret_pct: float | None = None
+    rsi: float | None = None
     enter_line: float | None = Field(None, description="Cierre semanal por encima del cual se entra (SMA lenta + banda)")
     gap_pct: float | None = Field(None, description="Distancia del cierre a la SMA lenta (%)")
     trend: RegimeTrend | None = None

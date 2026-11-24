@@ -1,92 +1,90 @@
 //@version=5
-// S&P 500 · régimen semanal: SMA40 semanal con banda de tolerancia (exposición 0 / 100%).
+// S&P 500 · régimen semanal: salir solo en mercado bajista, con salida de emergencia por VIX (exposición 0 / 100%).
 // Mismas reglas que src/quant/regime.py (documento: estrategias/sp500_regimen.md).
-// Usar sobre el gráfico SEMANAL (1W) de AMEX:SPY. Los datos diarios se leen con request.security_lower_tf.
+// Usar sobre el gráfico SEMANAL (1W) de AMEX:SPY.
 // Diferencia conocida con Python: TradingView usa precios sin ajustar por dividendos (las medias difieren ligeramente).
-indicator("S&P 500 · SMA40 semanal con banda", shorttitle="SP500 SMA40 banda", overlay=true, max_labels_count=500)
+indicator("S&P 500 · bajista + emergencia", shorttitle="SP500 régimen", overlay=true, max_labels_count=500)
 
 // ---------- Parámetros (iguales que regime_strategies.sp500_regime en config.yaml) ----------
 smaSlowLen = input.int(40, "SMA que decide (semanas)", minval=10)
-exitBand   = input.float(1.5, "Banda de salida: % bajo la SMA", minval=0)
-enterBand  = input.float(1.0, "Banda de entrada: % sobre la SMA", minval=0)
-shockPct   = input.float(4.0, "Choque: caída de la última sesión de la semana (%)")
+slopeWeeks = input.int(4, "Bajista: SMA más baja que hace N semanas", minval=1)
+enterBand  = input.float(1.0, "Entrada: % sobre la SMA", minval=0)
+vixEmerg   = input.float(35.0, "Emergencia: VIX semanal por encima")
+panicDrop  = input.float(3.5, "Semana estirada: caída semanal (%)")
+panicRsi   = input.float(30.0, "Semana estirada: RSI diario por debajo")
+rsiLen     = input.int(14, "RSI (sesiones)")
 smaFastLen = input.int(10, "SMA rápida (semanas, solo contexto)", minval=2)
-ddWindow   = input.int(25, "Contexto: ventana de días de distribución (sesiones)")
-ddDropPct  = input.float(0.2, "Contexto: caída mínima de un día de distribución (%)")
-showFlow   = input.bool(true, "Contexto: marcar semanas con ≥2 días de distribución / acumulación")
+vixSym     = input.symbol("CBOE:VIX", "Símbolo del VIX")
 
 if not timeframe.isweekly
     runtime.error("Este indicador está pensado para el gráfico SEMANAL (1W) de SPY")
 
-// ---------- Cálculos en velas diarias ----------
-dailyCalc() =>
-    ret  = close / close[1] - 1
-    more = volume > volume[1]
-    dd   = ret <= -ddDropPct / 100 and more
-    acc  = ret >= ddDropPct / 100 and more
-    [close, ret, dd ? 1 : 0, acc ? 1 : 0, math.sum(dd ? 1 : 0, ddWindow)]
-
-[dClose, dRet, dDD, dAcc, dDD25] = request.security_lower_tf(syminfo.tickerid, "1D", dailyCalc())
-
-n = array.size(dClose)
-// Choque de un día: si la última sesión de la semana cae ≥ shockPct, la semana se evalúa con la sesión anterior
-shock = n >= 2 and array.get(dRet, n - 1) <= -shockPct / 100
-idx   = n == 0 ? na : (shock ? n - 2 : n - 1)
-float evalClose = n > 0 ? array.get(dClose, idx) : close
-float dd25      = n > 0 ? array.get(dDD25, idx) : na
-
-// Medias con los cierres semanales reales, sustituyendo el de esta semana si hubo choque
-smaS = ta.sma(close, smaSlowLen) + (evalClose - close) / smaSlowLen
-smaF = ta.sma(close, smaFastLen) + (evalClose - close) / smaFastLen
-exitLine  = smaS * (1 - exitBand / 100)
+// ---------- Datos ----------
+rsiD = request.security(syminfo.tickerid, "1D", ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+vix  = request.security(vixSym, "W", close, lookahead=barmerge.lookahead_off)
+smaS = ta.sma(close, smaSlowLen)
+smaF = ta.sma(close, smaFastLen)
 enterLine = smaS * (1 + enterBand / 100)
+weekRet   = close / close[1] - 1
+
+below     = close < smaS
+bear      = below and smaS < smaS[slopeWeeks]
+emergency = below and not na(vix) and vix > vixEmerg
+stretched = weekRet <= -panicDrop / 100 or rsiD < panicRsi
 
 // ---------- Estado ----------
-var int expo = na
+var int  expo     = na
+var bool deferred = false
 prevExpo = expo
-if not na(smaS) and barstate.isconfirmed
+string why = ""
+if not na(smaS[slopeWeeks]) and barstate.isconfirmed
     if na(expo)
-        expo := evalClose > smaS ? 100 : 0
-    else if expo == 100 and evalClose < exitLine
-        expo := 0
-    else if expo == 0 and evalClose > enterLine
-        expo := 100
+        expo := close > smaS ? 100 : 0
+    else if expo == 100
+        if emergency
+            expo := 0, deferred := false, why := "Emergencia: VIX " + str.tostring(vix, "#.0")
+        else if deferred
+            deferred := false
+            if bear
+                expo := 0, why := "Bajista (salida aplazada)"
+        else if bear
+            if stretched
+                deferred := true
+            else
+                expo := 0, why := "Bajista"
+    else if close > enterLine
+        expo := 100, why := "Entrada"
 
 // ---------- Dibujo ----------
-plot(smaF, "SMA rápida (contexto)", color=color.new(#9a7bd8, 30), linewidth=1, style=plot.style_linebr)
-plot(smaS, "SMA que decide", color=color.new(#d95926, 0), linewidth=2)
-plot(exitLine, "Línea de salida", color=color.new(#d95926, 40), linewidth=1, style=plot.style_circles)
+plot(smaF, "SMA rápida (contexto)", color=color.new(#9a7bd8, 30), linewidth=1)
+plot(smaS, "SMA que decide", color=smaS < smaS[slopeWeeks] ? color.red : color.new(#d95926, 0), linewidth=2)
 plot(enterLine, "Línea de entrada", color=color.new(color.green, 40), linewidth=1, style=plot.style_circles)
 bgcolor(expo == 100 ? color.new(color.green, 85) : expo == 0 ? color.new(color.red, 92) : na)
+plotshape(deferred, "Salida aplazada (semana de pánico)", shape.diamond, location.abovebar, color.orange, size=size.tiny)
 
-gap = (evalClose / smaS - 1) * 100
 up   = not na(prevExpo) and expo > prevExpo
 down = not na(prevExpo) and expo < prevExpo
 if up
-    label.new(bar_index, low, "0%→100%\n" + str.tostring(gap, "+#.0") + "% sobre SMA", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+    label.new(bar_index, low, "0%→100%\n" + why, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
 if down
-    label.new(bar_index, high, "100%→0%\n" + str.tostring(gap, "#.0") + "% bajo SMA", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
-
-ddWeek  = n > 0 ? array.sum(dDD) : 0
-accWeek = n > 0 ? array.sum(dAcc) : 0
-plotchar(showFlow and ddWeek >= 2, "Semana con distribución", "D", location.abovebar, color.red, size=size.tiny)
-plotchar(showFlow and accWeek >= 2, "Semana con acumulación", "A", location.belowbar, color.green, size=size.tiny)
-plotshape(shock, "Choque de un día (evaluado con el jueves)", shape.xcross, location.abovebar, color.orange, size=size.tiny)
+    label.new(bar_index, high, "100%→0%\n" + why, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
 
 // Checklist del viernes
-var table t = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 20), border_width=1)
+var table t = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 20), border_width=1)
 if barstate.islast
     table.cell(t, 0, 0, "Exposición", text_color=color.white)
-    table.cell(t, 1, 0, na(expo) ? "—" : str.tostring(expo) + "%", text_color=color.white)
-    table.cell(t, 0, 1, "Cierre / SMA" + str.tostring(smaSlowLen), text_color=color.white)
-    table.cell(t, 1, 1, str.tostring(evalClose, "#.##") + " / " + str.tostring(smaS, "#.##") + " (" + str.tostring(gap, "+#.0;-#.0") + "%)", text_color=evalClose > smaS ? color.lime : color.red)
-    table.cell(t, 0, 2, expo == 100 ? "Sale si cierra <" : "Entra si cierra >", text_color=color.white)
-    table.cell(t, 1, 2, str.tostring(expo == 100 ? exitLine : enterLine, "#.##"), text_color=color.white)
-    table.cell(t, 0, 3, "Contexto: SMA" + str.tostring(smaFastLen) + " > SMA" + str.tostring(smaSlowLen), text_color=color.white)
-    table.cell(t, 1, 3, smaF > smaS ? "Sí" : "No", text_color=smaF > smaS ? color.lime : color.orange)
-    table.cell(t, 0, 4, "Contexto: días de distribución (" + str.tostring(ddWindow) + ")", text_color=color.white)
-    table.cell(t, 1, 4, str.tostring(dd25), text_color=color.white)
+    table.cell(t, 1, 0, na(expo) ? "—" : str.tostring(expo) + "%" + (deferred ? " (salida aplazada)" : ""), text_color=color.white)
+    table.cell(t, 0, 1, "1 Emergencia: VIX", text_color=color.white)
+    table.cell(t, 1, 1, str.tostring(vix, "#.0") + (emergency ? " ⚠" : ""), text_color=emergency ? color.red : color.lime)
+    table.cell(t, 0, 2, "2 Cierre / SMA" + str.tostring(smaSlowLen), text_color=color.white)
+    table.cell(t, 1, 2, str.tostring(close, "#.##") + " / " + str.tostring(smaS, "#.##") + (smaS < smaS[slopeWeeks] ? " ↓" : " ↑"), text_color=bear ? color.red : below ? color.orange : color.lime)
+    table.cell(t, 0, 3, "3 Semana / RSI", text_color=color.white)
+    table.cell(t, 1, 3, str.tostring(weekRet * 100, "+#.0;-#.0") + "% / " + str.tostring(rsiD, "#"), text_color=stretched ? color.orange : color.white)
+    table.cell(t, 0, 4, "4 Entra si cierra >", text_color=color.white)
+    table.cell(t, 1, 4, str.tostring(enterLine, "#.##"), text_color=color.white)
+    table.cell(t, 0, 5, "Contexto: SMA" + str.tostring(smaFastLen) + " > SMA" + str.tostring(smaSlowLen), text_color=color.white)
+    table.cell(t, 1, 5, smaF > smaS ? "Sí" : "No", text_color=smaF > smaS ? color.lime : color.orange)
 
 // ---------- Alertas (crear con «Una vez por cierre de barra») ----------
-alertcondition(up, "Entrar al 100%", "S&P 500 SMA40 con banda: ENTRAR (traspaso monetario → fondo S&P 500)")
-alertcondition(down, "Salir al 0%", "S&P 500 SMA40 con banda: SALIR (traspaso fondo S&P 500 → monetario)")
+alertcondition(up, "Entrar al 100%", "S&P 500 régimen: ENTRAR (traspaso monetario → fondo S&P 500)")
+alertcondition(down, "Salir al 0%", "S&P 500 régimen: SALIR (traspaso fondo S&P 500 → monetario)")

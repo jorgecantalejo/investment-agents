@@ -1,21 +1,18 @@
-"""Régimen semanal del S&P 500: SMA40 semanal con banda de tolerancia. Cálculos puros (sin red, fáciles de testear).
+"""Régimen semanal del S&P 500: salir solo en mercado bajista, con salida de emergencia por pánico. Cálculos puros.
 
 Exposición objetivo ∈ {0, 100}% en el fondo indexado (el resto en el monetario). Se decide solo al cierre de la última
 sesión de cada semana (normalmente el viernes) y el traspaso tarda `execution_lag` sesiones.
 
-Cada viernes:
-  SALIR    al 100%: cierre < SMA40 × (1 − exit_band_pct/100)   → 0%
-  ENTRAR   al 0%:   cierre > SMA40 × (1 + enter_band_pct/100)  → 100%
-  Entre las dos líneas (zona de tolerancia) se mantiene la exposición que haya: perforar la media por poco no da orden.
-Choque de un día: si la última sesión de la semana cae ≥ shock_day_pct, ese viernes se evalúa con los datos de la sesión
-anterior (no se decide sobre un desplome aislado); la semana siguiente ya lo incluye.
+Cada viernes, con C = cierre semanal y SMA40 = media de 40 cierres semanales:
+  1 EMERGENCIA (al 100%)  VIX al cierre > vix_emergency y C < SMA40                       → 0% sin esperar
+  2 BAJISTA    (al 100%)  C < SMA40 y SMA40 < SMA40 de hace `slope_weeks` semanas         → 0%,
+               salvo semana estirada (caída semanal ≥ panic_week_drop_pct o RSI14 diario < panic_rsi): se aplaza una
+               vez al viernes siguiente, que sale si sigue siendo bajista (aunque vuelva a estar estirada)
+  3 ENTRADA    (al 0%)    C > SMA40 × (1 + enter_band_pct/100)                            → 100%
+Con 1 se cubren los desplomes rápidos (marzo de 2020), con 2 los mercados bajistas lentos (2000-02, 2008, 2022).
 
-El volumen y el VIX son solo contexto (nunca dan órdenes; con traspasos de fondos son demasiado nerviosos):
-  día de distribución (DD)   rentabilidad ≤ −dd_drop_pct y volumen > volumen de la sesión anterior
-  DD25                       nº de DD en las últimas `dd_window` sesiones
-  CMF20                      Chaikin Money Flow de `cmf_window` sesiones
-  OBV                        On-Balance Volume (divergencia a `obv_weeks` semanas)
-La SMA10 semanal también es contexto (el cruce 10/40 suaviza más pero llega tarde: −34% de caída máxima en 1993-2026).
+Solo contexto (no dan órdenes): SMA10 semanal, días de distribución (rentabilidad ≤ −dd_drop_pct con volumen mayor que la
+sesión anterior, contados en `dd_window` sesiones), CMF y divergencia OBV.
 """
 
 from __future__ import annotations
@@ -32,16 +29,18 @@ LEVELS = (0, 100)
 class RegimeParams:
     sma_fast: int = 10
     sma_slow: int = 40
-    exit_band_pct: float = 1.5
+    slope_weeks: int = 4
     enter_band_pct: float = 1.0
+    vix_emergency: float = 35.0
+    panic_week_drop_pct: float = 3.5
+    panic_rsi: float = 30.0
+    rsi_window: int = 14
     dd_window: int = 25
     dd_drop_pct: float = 0.2
     dd_reduce: int = 7
     dd_aligned_max: int = 5
     cmf_window: int = 20
     obv_weeks: int = 10
-    vix_max: float = 25.0
-    shock_day_pct: float = 4.0
     execution_lag: int = 2
     cash_rate_pct: float = 0.0
 
@@ -58,10 +57,18 @@ def on_balance_volume(ohlcv: pd.DataFrame) -> pd.Series:
     return (direction * ohlcv["volume"]).cumsum()
 
 
+def rsi_wilder(close: pd.Series, window: int) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / window, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / window, adjust=False).mean()
+    return 100 - 100 / (1 + gain / loss)
+
+
 def daily_indicators(ohlcv: pd.DataFrame, vix: pd.Series | None, p: RegimeParams) -> pd.DataFrame:
-    """Añade ret, dd, acc, dd25, cmf, obv y vix (alineado con relleno hacia delante) a las velas diarias."""
+    """Añade ret, rsi, dd, acc, dd25, cmf, obv y vix (alineado con relleno hacia delante) a las velas diarias."""
     out = ohlcv.copy()
     out["ret"] = out["close"].pct_change()
+    out["rsi"] = rsi_wilder(out["close"], p.rsi_window)
     more_volume = out["volume"] > out["volume"].shift(1)
     out["dd"] = (out["ret"] <= -p.dd_drop_pct / 100) & more_volume
     out["acc"] = (out["ret"] >= p.dd_drop_pct / 100) & more_volume
@@ -78,32 +85,23 @@ def week_key(index: pd.DatetimeIndex) -> pd.Series:
 
 
 def weekly_frame(daily: pd.DataFrame, p: RegimeParams, last_week_complete: bool = True) -> pd.DataFrame:
-    """Una fila por semana con los datos de su sesión de evaluación (la última, o la anterior si hubo choque).
+    """Una fila por semana con los datos de su última sesión.
 
-    Columnas: eval_date, close_date, shock, close, sma_fast, sma_slow, dd25, cmf, obv_div, vix, complete.
-    Las medias se calculan con los cierres semanales reales; en una semana de choque se sustituye el cierre de esa semana
-    por el de la sesión anterior (ajuste exacto: SMA + (cierre_eval − cierre_real) / N).
+    Columnas: friday, close, week_ret, sma_fast, sma_slow, sma_slow_prev, rsi, vix, dd25, cmf, obv_div, complete.
     """
     keys = week_key(daily.index)
     last_dates = daily.index.to_series().groupby(keys.values).max()
     weekly = pd.DataFrame(index=pd.DatetimeIndex(last_dates.values, name="close_date"))
     weekly["friday"] = last_dates.index
-    true_close = daily["close"].reindex(weekly.index)
-    position = pd.Series(np.arange(len(daily)), index=daily.index)
-    shock = daily["ret"].reindex(weekly.index) <= -p.shock_day_pct / 100
-    eval_pos = position.reindex(weekly.index) - shock.astype(int)
-    eval_dates = daily.index[eval_pos.clip(lower=0).to_numpy()]
-    weekly["eval_date"] = eval_dates
-    weekly["shock"] = shock.to_numpy()
-    at_eval = daily.loc[eval_dates]
-    close = at_eval["close"].to_numpy()
-    weekly["close"] = close
-    for col, n in (("sma_fast", p.sma_fast), ("sma_slow", p.sma_slow)):
-        weekly[col] = true_close.rolling(n).mean() + (close - true_close) / n
-    weekly["dd25"] = at_eval["dd25"].to_numpy()
-    weekly["cmf"] = at_eval["cmf"].to_numpy()
-    weekly["vix"] = at_eval["vix"].to_numpy()
-    obv = pd.Series(at_eval["obv"].to_numpy(), index=weekly.index)
+    at = daily.loc[weekly.index]
+    weekly["close"] = at["close"].to_numpy()
+    weekly["week_ret"] = weekly["close"].pct_change()
+    weekly["sma_fast"] = weekly["close"].rolling(p.sma_fast).mean()
+    weekly["sma_slow"] = weekly["close"].rolling(p.sma_slow).mean()
+    weekly["sma_slow_prev"] = weekly["sma_slow"].shift(p.slope_weeks)
+    for col in ("rsi", "vix", "dd25", "cmf"):
+        weekly[col] = at[col].to_numpy()
+    obv = pd.Series(at["obv"].to_numpy(), index=weekly.index)
     price = weekly["close"]
     weekly["obv_div"] = (price > price.shift(p.obv_weeks)) & (obv < obv.shift(p.obv_weeks))
     weekly["complete"] = True
@@ -112,24 +110,20 @@ def weekly_frame(daily: pd.DataFrame, p: RegimeParams, last_week_complete: bool 
     return weekly
 
 
-
-
 @dataclass
 class Readings:
-    """Lectura de un viernes: valores, líneas de la banda y contexto de flujo."""
+    """Lectura de un viernes: valores de las reglas y contexto de flujo."""
 
     close: float
     sma_fast: float
     sma_slow: float
+    sma_slow_prev: float
+    week_ret: float | None
+    rsi: float | None
+    vix: float | None
     dd25: int
     cmf: float
     obv_div: bool
-    vix: float | None
-    prev_cmf_negative: bool
-    prev_vix_high: bool
-
-    def exit_line(self, p: RegimeParams) -> float:
-        return self.sma_slow * (1 - p.exit_band_pct / 100)
 
     def enter_line(self, p: RegimeParams) -> float:
         return self.sma_slow * (1 + p.enter_band_pct / 100)
@@ -139,6 +133,18 @@ class Readings:
         return (self.close / self.sma_slow - 1) * 100
 
     @property
+    def below(self) -> bool:
+        return self.close < self.sma_slow
+
+    @property
+    def slope_down(self) -> bool:
+        return self.sma_slow < self.sma_slow_prev
+
+    @property
+    def bear(self) -> bool:
+        return self.below and self.slope_down
+
+    @property
     def trend_up(self) -> bool:
         return self.close > self.sma_slow and self.sma_fast > self.sma_slow
 
@@ -146,21 +152,13 @@ class Readings:
     def trend_down(self) -> bool:
         return self.close < self.sma_slow and self.sma_fast < self.sma_slow
 
-    def vix_high(self, p: RegimeParams) -> bool:
-        return self.vix is not None and self.vix > p.vix_max
+    def emergency(self, p: RegimeParams) -> bool:
+        return self.below and self.vix is not None and self.vix > p.vix_emergency
 
-    def flow_warnings(self, p: RegimeParams) -> list[str]:
-        """Avisos de flujo y macro: solo contexto, no cambian la exposición."""
-        reasons = []
-        if self.dd25 >= p.dd_reduce:
-            reasons.append(f"{self.dd25} días de distribución en {p.dd_window} sesiones")
-        if self.cmf < 0 and self.prev_cmf_negative:
-            reasons.append(f"CMF{p.cmf_window} negativo dos viernes seguidos")
-        if self.obv_div:
-            reasons.append(f"divergencia OBV a {p.obv_weeks} semanas")
-        if self.vix_high(p) and self.prev_vix_high:
-            reasons.append(f"VIX > {p.vix_max:g} dos viernes seguidos")
-        return reasons
+    def stretched(self, p: RegimeParams) -> bool:
+        """Semana de pánico: vender aquí suele ser vender en el suelo del rebote técnico."""
+        return ((self.week_ret is not None and self.week_ret <= -p.panic_week_drop_pct / 100)
+                or (self.rsi is not None and self.rsi < p.panic_rsi))
 
 
 @dataclass
@@ -173,36 +171,50 @@ class Switch:
 
 @dataclass
 class RegimeReplay:
-    weekly: pd.DataFrame  # con la columna exposure (decisión de cada semana completa evaluada)
+    weekly: pd.DataFrame  # con las columnas exposure y deferred (decisión de cada semana completa evaluada)
     switches: list[Switch]
     exposure: int
+    deferred: bool  # hay una salida aplazada que se decide el próximo viernes
     daily_exposure: pd.Series  # exposición efectiva de cada sesión (tras el retraso de ejecución), en tanto por uno
     first_valid: pd.Timestamp | None = None
     last_decision: pd.Timestamp | None = None
 
 
+def _num(value) -> float | None:
+    return None if pd.isna(value) else float(value)
+
+
 def readings_at(weekly: pd.DataFrame, i: int, p: RegimeParams) -> Readings | None:
-    """Lectura de la semana `i`; None si aún falta la media lenta (o es la primera semana)."""
+    """Lectura de la semana `i`; None si aún falta la media lenta o su pendiente."""
     row = weekly.iloc[i]
-    if i == 0 or pd.isna(row["sma_slow"]):
+    if pd.isna(row["sma_slow"]) or pd.isna(row["sma_slow_prev"]):
         return None
-    prev = weekly.iloc[i - 1]
     return Readings(
         close=float(row["close"]), sma_fast=float(row["sma_fast"]), sma_slow=float(row["sma_slow"]),
+        sma_slow_prev=float(row["sma_slow_prev"]), week_ret=_num(row["week_ret"]), rsi=_num(row["rsi"]), vix=_num(row["vix"]),
         dd25=0 if pd.isna(row["dd25"]) else int(row["dd25"]), cmf=0.0 if pd.isna(row["cmf"]) else float(row["cmf"]),
-        obv_div=bool(row["obv_div"]), vix=None if pd.isna(row["vix"]) else float(row["vix"]),
-        prev_cmf_negative=bool(not pd.isna(prev["cmf"]) and prev["cmf"] < 0),
-        prev_vix_high=bool(not pd.isna(prev["vix"]) and prev["vix"] > p.vix_max),
+        obv_div=bool(row["obv_div"]),
     )
 
 
-def decide(exposure: int, r: Readings, p: RegimeParams) -> tuple[int, list[str]]:
-    """Exposición tras la lectura del viernes, con los motivos del cambio (vacío si no cambia)."""
-    if exposure == 100 and r.close < r.exit_line(p):
-        return 0, [f"cierre semanal {r.gap_pct:+.1f}% bajo la SMA{p.sma_slow}s: perfora la banda de salida (−{p.exit_band_pct:g}%)"]
-    if exposure == 0 and r.close > r.enter_line(p):
-        return 100, [f"cierre semanal {r.gap_pct:+.1f}% sobre la SMA{p.sma_slow}s: supera la banda de entrada (+{p.enter_band_pct:g}%)"]
-    return exposure, []
+def decide(exposure: int, deferred: bool, r: Readings, p: RegimeParams) -> tuple[int, bool, list[str]]:
+    """Exposición tras la lectura del viernes, si queda una salida aplazada y los motivos del cambio (vacío si no cambia)."""
+    slow = f"SMA{p.sma_slow}s"
+    if exposure == 100:
+        if r.emergency(p):
+            return 0, False, [f"salida de emergencia: VIX {r.vix:.1f} > {p.vix_emergency:g} con el cierre {r.gap_pct:+.1f}% bajo la {slow}"]
+        if deferred:
+            if r.bear:
+                return 0, False, [f"salida aplazada confirmada: el cierre sigue {r.gap_pct:+.1f}% bajo la {slow} y la media baja"]
+            return 100, False, []
+        if r.bear:
+            if r.stretched(p):
+                return 100, True, []
+            return 0, False, [f"mercado bajista: cierre {r.gap_pct:+.1f}% bajo la {slow} y la media más baja que hace {p.slope_weeks} semanas"]
+        return 100, False, []
+    if r.close > r.enter_line(p):
+        return 100, False, [f"cierre {r.gap_pct:+.1f}% sobre la {slow}: supera la línea de entrada (+{p.enter_band_pct:g}%)"]
+    return 0, False, []
 
 
 def initial_exposure(r: Readings) -> int:
@@ -212,12 +224,12 @@ def initial_exposure(r: Readings) -> int:
 def replay(daily: pd.DataFrame, weekly: pd.DataFrame, p: RegimeParams) -> RegimeReplay:
     """Aplica las reglas semana a semana sobre todo el histórico.
 
-    La primera semana con la media lenta fija la exposición inicial sin contar como traspaso.
+    La primera semana con la media lenta y su pendiente fija la exposición inicial sin contar como traspaso.
     """
     weekly = weekly.copy()
-    exposure = 0
+    exposure, deferred = 0, False
     switches: list[Switch] = []
-    decisions: dict[pd.Timestamp, int] = {}
+    decisions: dict[pd.Timestamp, tuple[int, bool]] = {}
     first_valid = last_decision = None
     for i, ts in enumerate(weekly.index):
         if not weekly["complete"].iloc[i]:
@@ -228,17 +240,18 @@ def replay(daily: pd.DataFrame, weekly: pd.DataFrame, p: RegimeParams) -> Regime
         if first_valid is None:
             first_valid, exposure = ts, initial_exposure(r)
         else:
-            new_exposure, reasons = decide(exposure, r, p)
+            new_exposure, deferred, reasons = decide(exposure, deferred, r, p)
             if new_exposure != exposure:
                 switches.append(Switch(ts, exposure, new_exposure, reasons))
             exposure = new_exposure
-        decisions[ts] = exposure
+        decisions[ts] = (exposure, deferred)
         last_decision = ts
 
-    weekly["exposure"] = pd.Series(decisions, dtype=float)
+    weekly["exposure"] = pd.Series({k: v[0] for k, v in decisions.items()}, dtype=float)
+    weekly["deferred"] = pd.Series({k: v[1] for k, v in decisions.items()}, dtype=object)
     target = weekly["exposure"].reindex(daily.index).ffill()
     effective = target.shift(p.execution_lag).fillna(0.0) / 100
-    return RegimeReplay(weekly, switches, exposure, effective, first_valid, last_decision)
+    return RegimeReplay(weekly, switches, exposure, deferred, effective, first_valid, last_decision)
 
 
 def sma_only_exposure(weekly: pd.DataFrame, daily_index: pd.DatetimeIndex, p: RegimeParams) -> pd.Series:

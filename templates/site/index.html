@@ -133,7 +133,7 @@
 
 {% if sp500_regime and not sp500_regime.error %}{% set r = sp500_regime %}
 <a class="panel strategy-tile" href="sp500.html#estrategia" style="margin-top:12px; color:var(--text)">
-  <div><div class="label">S&amp;P 500 · SMA40 semanal con banda</div><div class="state"><span class="pill {{ 'st-salida_pendiente' if r.exposure == 0 else 'st-mantener' }}">{{ r.exposure }}% invertido{{ ' · traspaso' if r.changed else '' }}</span></div></div>
+  <div><div class="label">S&amp;P 500 · régimen semanal</div><div class="state"><span class="pill {{ 'st-salida_pendiente' if r.exposure == 0 else 'st-mantener' }}">{{ r.exposure }}% invertido{{ ' · traspaso' if r.changed else '' }}</span></div></div>
   <div class="small muted" style="flex:1; min-width:220px">{{ r.explanation[0] if r.explanation else '' }}{% if not r.week_complete and r.provisional_exposure != r.exposure %} <b>Provisional: {{ r.provisional_exposure }}%.</b>{% endif %}</div>
   <span class="tile-link">Ver estrategia →</span>
 </a>

@@ -163,30 +163,32 @@ class TrendStrategyConfig(_Strict):
 
 
 class RegimeStrategyConfig(_Strict):
-    """Régimen semanal del S&P 500: SMA40 semanal con banda de tolerancia, exposición 0/100% entre un fondo indexado y un monetario.
+    """Régimen semanal del S&P 500: salir solo en mercado bajista, con salida de emergencia por pánico (VIX). Exposición 0/100%
+    entre un fondo indexado y un monetario.
 
-    Señales sobre velas diarias de `ticker` (SPY), decididas solo al cierre semanal; el volumen y el VIX son solo contexto.
-    Ver src/quant/regime.py.
+    Señales sobre velas diarias de `ticker` (SPY) y `vix_ticker`, decididas solo al cierre semanal. Ver src/quant/regime.py.
     """
 
     name: str
     ticker: str = "SPY"
-    vix_ticker: str | None = "^VIX"
+    vix_ticker: str | None = Field("^VIX", description="Sin VIX no hay salida de emergencia")
     asset_id: str | None = Field(None, description="Activo al que acompaña (página de la web)")
     vehicle: str = Field("Fondo indexado S&P 500 ↔ fondo monetario EUR (traspasos)", description="Cómo se ejecuta")
     history_period: str = "max"
     sma_fast: int = Field(10, ge=2, description="Media rápida en semanas (solo contexto)")
     sma_slow: int = Field(40, ge=10, description="Media lenta en semanas: la que decide")
-    exit_band_pct: float = Field(1.5, ge=0, le=10, description="Salir al 0% si el cierre semanal queda este % bajo la media lenta")
+    slope_weeks: int = Field(4, ge=1, description="Mercado bajista: la media lenta está más baja que hace N semanas")
     enter_band_pct: float = Field(1.0, ge=0, le=10, description="Entrar al 100% si el cierre semanal queda este % sobre la media lenta")
+    vix_emergency: float = Field(35.0, gt=0, description="Salida de emergencia: VIX al cierre semanal por encima, con el cierre bajo la media")
+    panic_week_drop_pct: float = Field(3.5, gt=0, description="Semana estirada: caída semanal ≥ este %, aplaza una semana la salida bajista")
+    panic_rsi: float = Field(30.0, gt=0, lt=100, description="Semana estirada: RSI diario por debajo")
+    rsi_window: int = Field(14, ge=2)
     dd_window: int = Field(25, ge=5, description="Ventana de sesiones para contar días de distribución")
     dd_drop_pct: float = Field(0.2, gt=0, description="Caída mínima (%) de un día de distribución")
     dd_reduce: int = Field(7, ge=1, description="Días de distribución en la ventana que cuentan como aviso (contexto)")
     dd_aligned_max: int = Field(5, ge=0, description="Máximo de días de distribución para considerar el flujo alineado")
     cmf_window: int = Field(20, ge=5)
     obv_weeks: int = Field(10, ge=2, description="Divergencia OBV: precio sube y OBV baja frente a hace N semanas")
-    vix_max: float = Field(25.0, gt=0, description="VIX semanal por encima = tensión macro")
-    shock_day_pct: float = Field(4.0, gt=0, description="Caída de la última sesión de la semana que se considera choque aislado")
     execution_lag: int = Field(2, ge=0, description="Sesiones entre la decisión del viernes y la ejecución del traspaso (backtest)")
     cash_rate_pct: float = Field(0.0, ge=0, description="Rentabilidad anual supuesta del monetario en el backtest")
     exchange_tz: str = "America/New_York"
