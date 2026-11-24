@@ -31,11 +31,9 @@ def params_from_config(cfg: RegimeStrategyConfig) -> RegimeParams:
 
 
 def rule_text(cfg: RegimeStrategyConfig) -> str:
-    return (f"Decisión solo al cierre semanal. 100% si cierre > SMA{cfg.sma_slow}s, SMA{cfg.sma_fast}s > SMA{cfg.sma_slow}s, "
-            f"DD{cfg.dd_window} ≤ {cfg.dd_aligned_max}, CMF{cfg.cmf_window} > 0, sin divergencia OBV y VIX ≤ {cfg.vix_max:g}. "
-            f"50% si el cierre pierde la SMA{cfg.sma_slow}s o hay {cfg.warnings_to_reduce} avisos de flujo/macro. "
-            f"0% con dos cierres semanales bajo la SMA{cfg.sma_slow}s confirmados por distribución, CMF o cruce de medias. "
-            f"Reentrada al 50% con Follow-Through Day (día {cfg.ftd_first_day}-{cfg.ftd_last_day}, ≥ +{cfg.ftd_gain_pct:g}% con más volumen).")
+    return (f"Decisión solo al cierre semanal. Salir al 0% si el cierre queda más de un {cfg.exit_band_pct:g}% bajo la "
+            f"SMA{cfg.sma_slow}s; volver al 100% si cierra más de un {cfg.enter_band_pct:g}% por encima. Entre las dos líneas "
+            f"se mantiene la exposición. El volumen, el CMF, el OBV y el VIX son solo contexto.")
 
 
 def week_is_complete(last_bar: date, today: date) -> bool:
@@ -66,50 +64,44 @@ def weeks_below(weekly: pd.DataFrame) -> int:
     return count
 
 
-def build_checks(r: Readings, cfg: RegimeStrategyConfig, p: RegimeParams, below: int, exposure: int, rally) -> list[RegimeCheck]:
-    gap = (r.close / r.sma_slow - 1) * 100
-    trend_status = "ok" if r.trend_up else ("alerta" if r.trend_down or below >= 2 else "aviso")
-    checks = [
+def build_checks(r: Readings, cfg: RegimeStrategyConfig, p: RegimeParams, below: int, exposure: int) -> list[RegimeCheck]:
+    exit_line, enter_line = r.exit_line(p), r.enter_line(p)
+    if exposure == 100:
+        status = "alerta" if r.close < exit_line else ("aviso" if r.close < r.sma_slow else "ok")
+        note = (f"a {(r.close / exit_line - 1) * 100:+.1f}% de la línea de salida" if r.close >= exit_line else "perfora la línea de salida")
+    else:
+        status = "ok" if r.close > enter_line else ("aviso" if r.close > r.sma_slow else "alerta")
+        note = (f"a {(r.close / enter_line - 1) * 100:+.1f}% de la línea de entrada" if r.close <= enter_line else "supera la línea de entrada")
+    if below:
+        note += f" · {below} cierre(s) semanal(es) seguido(s) bajo la SMA{cfg.sma_slow}"
+    return [
         RegimeCheck(
-            id="trend", label=f"1 · Tendencia: cierre semanal frente a SMA{cfg.sma_slow}s y cruce SMA{cfg.sma_fast}s/SMA{cfg.sma_slow}s",
-            value=f"{_fmt(r.close)} · SMA{cfg.sma_fast} {_fmt(r.sma_fast)} · SMA{cfg.sma_slow} {_fmt(r.sma_slow)} ({gap:+.1f}%)",
-            rule=f"Alcista: cierre > SMA{cfg.sma_slow} y SMA{cfg.sma_fast} > SMA{cfg.sma_slow}. Dos cierres seguidos bajo la SMA{cfg.sma_slow} = ruptura confirmada.",
-            status=trend_status,
-            note=(f"{below} cierre(s) semanal(es) seguido(s) bajo la SMA{cfg.sma_slow}" if below else
-                  ("SMA rápida por encima de la lenta" if r.sma_fast > r.sma_slow else "SMA rápida aún por debajo de la lenta"))),
+            id="trend", label=f"1 · La regla: cierre semanal frente a la SMA{cfg.sma_slow}s y su banda",
+            value=f"{_fmt(r.close)} · SMA{cfg.sma_slow} {_fmt(r.sma_slow)} ({r.gap_pct:+.1f}%)",
+            rule=f"Salida < {_fmt(exit_line)} (−{cfg.exit_band_pct:g}%) · entrada > {_fmt(enter_line)} (+{cfg.enter_band_pct:g}%) · entre medias, se mantiene",
+            status=status, note=note),
         RegimeCheck(
-            id="dd", label=f"2 · Días de distribución en {cfg.dd_window} sesiones",
-            value=str(r.dd25), rule=f"≤ {cfg.dd_aligned_max} flujo sano · ≥ {cfg.dd_reduce} aviso (caída ≥ {cfg.dd_drop_pct:g}% con más volumen)",
+            id="cross", label=f"2 · Contexto: SMA{cfg.sma_fast}s frente a SMA{cfg.sma_slow}s",
+            value=f"{_fmt(r.sma_fast)} / {_fmt(r.sma_slow)}", rule="Solo contexto: el cruce confirma el régimen pero llega tarde",
+            status="ok" if r.sma_fast > r.sma_slow else "aviso"),
+        RegimeCheck(
+            id="dd", label=f"3 · Contexto: días de distribución en {cfg.dd_window} sesiones",
+            value=str(r.dd25), rule=f"Solo contexto · ≤ {cfg.dd_aligned_max} sano · ≥ {cfg.dd_reduce} vigilar (caída ≥ {cfg.dd_drop_pct:g}% con más volumen)",
             status="ok" if r.dd25 <= p.dd_aligned_max else ("alerta" if r.dd25 >= p.dd_reduce else "aviso")),
         RegimeCheck(
-            id="cmf", label=f"3 · Chaikin Money Flow ({cfg.cmf_window} sesiones)",
-            value=f"{r.cmf:+.3f}", rule="> 0 entrada de dinero · < 0 dos viernes seguidos = aviso",
+            id="cmf", label=f"4 · Contexto: Chaikin Money Flow ({cfg.cmf_window} sesiones)",
+            value=f"{r.cmf:+.3f}", rule="Solo contexto · > 0 entrada de dinero · < 0 salida",
             status="ok" if r.cmf > 0 else ("alerta" if r.prev_cmf_negative else "aviso"),
             note="también negativo el viernes anterior" if r.cmf < 0 and r.prev_cmf_negative else ""),
         RegimeCheck(
-            id="obv", label=f"4 · Divergencia OBV a {cfg.obv_weeks} semanas",
-            value="Sí" if r.obv_div else "No", rule=f"Aviso si el precio está más alto que hace {cfg.obv_weeks} semanas y el OBV más bajo",
+            id="obv", label=f"5 · Contexto: divergencia OBV a {cfg.obv_weeks} semanas",
+            value="Sí" if r.obv_div else "No", rule=f"Solo contexto · precio más alto que hace {cfg.obv_weeks} semanas con OBV más bajo",
             status="alerta" if r.obv_div else "ok"),
         RegimeCheck(
-            id="vix", label="5 · Tensión macro: VIX al cierre semanal",
-            value=_fmt(r.vix), rule=f"≤ {cfg.vix_max:g} normal · > {cfg.vix_max:g} dos viernes seguidos = aviso",
+            id="vix", label="6 · Contexto: VIX al cierre semanal",
+            value=_fmt(r.vix), rule=f"Solo contexto · ≤ {cfg.vix_max:g} normal · > {cfg.vix_max:g} tensión",
             status="na" if r.vix is None else ("ok" if r.vix <= p.vix_max else ("alerta" if r.prev_vix_high else "aviso"))),
     ]
-    if exposure == 0:
-        if rally is None:
-            value, status, note = "—", "na", ""
-        elif rally.ftd_date is not None:
-            value, status, note = f"FTD el {rally.ftd_date:%Y-%m-%d}", "ok", f"mínimo del intento {_fmt(rally.low)}: debe respetarse al cierre del viernes"
-        elif rally.expired:
-            value, status, note = "Intento caducado sin FTD", "aviso", f"se reinicia si el precio pierde {_fmt(rally.low)}"
-        elif rally.day == 0:
-            value, status, note = "Esperando el día 1", "aviso", f"mínimo de referencia {_fmt(rally.low)}"
-        else:
-            value, status, note = f"Día {rally.day} del intento", "aviso", f"FTD posible entre los días {cfg.ftd_first_day} y {cfg.ftd_last_day}; mínimo {_fmt(rally.low)}"
-        checks.append(RegimeCheck(id="ftd", label="6 · Follow-Through Day (solo fuera del mercado)", value=value,
-                                  rule=f"Día {cfg.ftd_first_day}-{cfg.ftd_last_day} del rebote, subida ≥ {cfg.ftd_gain_pct:g}% con volumen > sesión anterior",
-                                  status=status, note=note))
-    return checks
 
 
 def drawdown_episodes(daily: pd.DataFrame, exposures: dict[str, pd.Series], since: pd.Timestamp) -> list[dict]:
@@ -152,8 +144,12 @@ def _explain(res: RegimeStrategyResult, cfg: RegimeStrategyConfig) -> list[str]:
         lines.append(f"Decisión del viernes {res.decision_date}: mantener {where}. No hay que hacer ningún traspaso.")
     if res.switches and res.changed:
         lines.append("Motivo: " + "; ".join(res.switches[-1].reasons) + ".")
-    if res.mode == "rebote":
-        lines.append(f"El 50% actual es de rebote (tras un Follow-Through Day): si un cierre semanal pierde {_fmt(res.rally_low)}, se vuelve al 0%.")
+    if res.exposure == 100:
+        lines.append(f"Se saldría con un cierre semanal por debajo de {_fmt(res.exit_line)} "
+                     f"({cfg.exit_band_pct:g}% bajo la SMA{cfg.sma_slow}s, que está en {_fmt(res.sma_slow)}).")
+    else:
+        lines.append(f"Se volvería a entrar con un cierre semanal por encima de {_fmt(res.enter_line)} "
+                     f"({cfg.enter_band_pct:g}% sobre la SMA{cfg.sma_slow}s, que está en {_fmt(res.sma_slow)}).")
     if res.shock_week:
         lines.append(f"Semana de choque: la última sesión cayó más de un {cfg.shock_day_pct:g}% y se ha evaluado con el cierre anterior; "
                      "el desplome cuenta la semana que viene, cuando se vea si hubo rebote.")
@@ -214,8 +210,7 @@ def _evaluate(base: RegimeStrategyResult, cfg: RegimeStrategyConfig, ohlcv: pd.D
     changed = last_switch is not None and last_switch.date == rep.last_decision
     provisional, provisional_reasons = rep.exposure, []
     if not complete:
-        ftd_ok = rep.ftd_pending is not None and rep.rally is not None and rep.rally.ftd_date is not None and r.close > rep.rally.low
-        provisional, _, provisional_reasons = decide(rep.exposure, rep.mode, r, ftd_ok, rep.rally_low, p)
+        provisional, provisional_reasons = decide(rep.exposure, r, p)
 
     window = daily.iloc[-cfg.dd_window:]
     dd_days = [FlowDay(date=ts.strftime("%Y-%m-%d"), change_pct=round(float(row["ret"]) * 100, 2),
@@ -229,20 +224,19 @@ def _evaluate(base: RegimeStrategyResult, cfg: RegimeStrategyConfig, ohlcv: pd.D
     chart = RegimeChart(
         dates=[d.strftime("%Y-%m-%d") for d in tail.index], close=[round(float(v), 2) for v in tail["close"]],
         sma_fast=[round_or_none(v, 2) for v in tail["sma_fast"]], sma_slow=[round_or_none(v, 2) for v in tail["sma_slow"]],
+        exit_line=[round_or_none(v * (1 - p.exit_band_pct / 100), 2) for v in tail["sma_slow"]],
         exposure=[None if pd.isna(v) else int(v) for v in tail["exposure"]], dd25=[None if pd.isna(v) else int(v) for v in tail["dd25"]],
     )
-    rally = rep.rally if rep.exposure == 0 else None
     last_week = weekly.iloc[-1]
     result = base.model_copy(update=dict(
-        exposure=rep.exposure, mode=rep.mode, decision_date=rep.last_decision.strftime("%Y-%m-%d"), changed=changed,
+        exposure=rep.exposure, decision_date=rep.last_decision.strftime("%Y-%m-%d"), changed=changed,
         previous_exposure=last_switch.from_pct if changed else rep.exposure,
         provisional_exposure=provisional, provisional_reasons=provisional_reasons, week_complete=complete,
         shock_week=bool(last_week["shock"]), last_date=daily.index[-1].strftime("%Y-%m-%d"), last_close=round(float(daily["close"].iloc[-1]), 2),
-        sma_fast=round(r.sma_fast, 2), sma_slow=round(r.sma_slow, 2), trend=trend_label(r), dd25=r.dd25, distribution_days=dd_days,
+        sma_fast=round(r.sma_fast, 2), sma_slow=round(r.sma_slow, 2), exit_line=round(r.exit_line(p), 2),
+        enter_line=round(r.enter_line(p), 2), gap_pct=round(r.gap_pct, 2), trend=trend_label(r), dd25=r.dd25, distribution_days=dd_days,
         cmf=round(r.cmf, 4), obv_divergence=r.obv_div, vix=round_or_none(r.vix, 2),
-        rally_day=rally.day if rally else None, rally_low=round_or_none(rep.rally_low if rep.mode == "rebote" else (rally.low if rally else None), 2),
-        ftd_date=rally.ftd_date.strftime("%Y-%m-%d") if rally and rally.ftd_date is not None else None,
-        checks=build_checks(r, cfg, p, weeks_below(weekly), rep.exposure, rally),
+        checks=build_checks(r, cfg, p, weeks_below(weekly), rep.exposure),
         switches=[RegimeSwitch(date=s.date.strftime("%Y-%m-%d"), from_pct=s.from_pct, to_pct=s.to_pct, reasons=s.reasons) for s in rep.switches],
         switches_per_year=round(len(rep.switches) / years, 1) if years > 0 else None, since=rep.first_valid.strftime("%Y-%m-%d"),
         perf={k: RegimePerf(**v) for k, v in perf.items()}, episodes=drawdown_episodes(daily, exposures, rep.first_valid),

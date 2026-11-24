@@ -314,6 +314,7 @@ class RegimeChart(BaseModel):
     close: list[float] = Field(default_factory=list)
     sma_fast: list[float | None] = Field(default_factory=list)
     sma_slow: list[float | None] = Field(default_factory=list)
+    exit_line: list[float | None] = Field(default_factory=list)
     exposure: list[int | None] = Field(default_factory=list)
     dd25: list[int | None] = Field(default_factory=list)
 
@@ -325,7 +326,7 @@ class FlowDay(BaseModel):
 
 
 class RegimeStrategyResult(BaseModel):
-    """Estado de la estrategia de régimen semanal y flujo institucional. Todo calculado por Python."""
+    """Estado de la estrategia de régimen semanal (SMA40 con banda de tolerancia). Todo calculado por Python."""
 
     id: str
     name: str
@@ -333,7 +334,6 @@ class RegimeStrategyResult(BaseModel):
     vehicle: str = ""
     asset_id: str | None = None
     exposure: int | None = Field(None, description="Exposición vigente (%) según la última decisión semanal")
-    mode: Literal["normal", "rebote"] = "normal"
     decision_date: str | None = Field(None, description="Última semana cerrada evaluada")
     changed: bool = Field(False, description="La última decisión cambia la exposición: hay que ordenar un traspaso")
     previous_exposure: int | None = None
@@ -345,15 +345,15 @@ class RegimeStrategyResult(BaseModel):
     last_close: float | None = None
     sma_fast: float | None = None
     sma_slow: float | None = None
+    exit_line: float | None = Field(None, description="Cierre semanal por debajo del cual se sale (SMA lenta − banda)")
+    enter_line: float | None = Field(None, description="Cierre semanal por encima del cual se entra (SMA lenta + banda)")
+    gap_pct: float | None = Field(None, description="Distancia del cierre a la SMA lenta (%)")
     trend: RegimeTrend | None = None
     dd25: int | None = None
     distribution_days: list[FlowDay] = Field(default_factory=list)
     cmf: float | None = None
     obv_divergence: bool | None = None
     vix: float | None = None
-    rally_day: int | None = Field(None, description="Día del intento de rebote en curso (solo con exposición 0%)")
-    rally_low: float | None = None
-    ftd_date: str | None = None
     checks: list[RegimeCheck] = Field(default_factory=list)
     explanation: list[str] = Field(default_factory=list)
     switches: list[RegimeSwitch] = Field(default_factory=list)

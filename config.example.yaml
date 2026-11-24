@@ -176,26 +176,26 @@ strategies:
     exchange_tz: "Europe/Berlin"
     session_close: "17:35"          # Antes de esta hora se descarta la vela del día (aún incompleta)
 
-# Estrategia de régimen semanal + flujo institucional del S&P 500 (reglas deterministas en Python, sin LLM).
-# Exposición 0/50/100% en un fondo indexado S&P 500; el resto en un monetario en EUR (traspasos).
-# Señales sobre SPY (precio y volumen) y ^VIX; decisión solo al cierre semanal. Documento: estrategias/sp500_regimen.md
+# Estrategia de régimen semanal del S&P 500 (reglas deterministas en Python, sin LLM): SMA40 semanal con banda de tolerancia.
+# Exposición 0/100% en un fondo indexado S&P 500; el resto en un monetario en EUR (traspasos).
+# Señales sobre SPY; decisión solo al cierre semanal. Volumen y ^VIX solo como contexto. Documento: estrategias/sp500_regimen.md
 regime_strategies:
   sp500_regime:
-    name: "S&P 500 — régimen semanal y flujo institucional"
+    name: "S&P 500 — SMA40 semanal con banda"
     ticker: "SPY"
     vix_ticker: "^VIX"
     asset_id: "sp500"
-    sma_fast: 10                    # semanas
-    sma_slow: 40                    # semanas: filtro principal
-    dd_window: 25                   # sesiones para contar días de distribución
+    sma_fast: 10                    # semanas (solo contexto)
+    sma_slow: 40                    # semanas: la media que decide
+    exit_band_pct: 1.5              # salir al 0% con un cierre semanal >1,5% bajo la SMA40
+    enter_band_pct: 1.0             # volver al 100% con un cierre semanal >1% sobre la SMA40
+    dd_window: 25                   # contexto: sesiones para contar días de distribución
     dd_drop_pct: 0.2                # día de distribución: caída ≥ 0,2% con más volumen que la sesión anterior
     dd_reduce: 7                    # con el volumen de SPY la mediana es 5: el aviso empieza en 7
     dd_aligned_max: 5
     cmf_window: 20
     obv_weeks: 10
     vix_max: 25
-    warnings_to_reduce: 2           # avisos de flujo/macro a la vez para bajar del 100% al 50%
-    ftd_gain_pct: 1.25
     shock_day_pct: 4.0              # caída de la última sesión de la semana que se trata como choque aislado
     execution_lag: 2                # sesiones hasta que se ejecuta el traspaso (solo backtest)
     cash_rate_pct: 0.0              # rentabilidad supuesta del monetario en el backtest (conservador)

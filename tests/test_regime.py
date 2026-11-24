@@ -1,4 +1,4 @@
-"""Estrategia de régimen semanal y flujo del S&P 500: indicadores, reglas, FTD, choque de un día y resultado."""
+"""Estrategia de régimen semanal del S&P 500 (SMA40 con banda): indicadores de contexto, regla, choque de un día y resultado."""
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -10,9 +10,7 @@ import pytest
 from src.config.models import RegimeStrategyConfig
 from src.core.errors import InvalidTickerError
 from src.market.service import OhlcResult
-from src.quant.regime import (
-    RallyAttempt, Readings, RegimeParams, chaikin_money_flow, daily_indicators, decide, replay, weekly_frame,
-)
+from src.quant.regime import Readings, RegimeParams, chaikin_money_flow, daily_indicators, decide, replay, weekly_frame
 from src.quant.regime_snapshot import build_regime_strategy, week_is_complete
 
 P = RegimeParams()
@@ -29,7 +27,7 @@ def ohlcv(close: list[float], volume: list[float] | None = None, start: str = "2
 
 def readings(**kw) -> Readings:
     base = dict(close=110, sma_fast=105, sma_slow=100, dd25=2, cmf=0.1, obv_div=False, vix=15.0,
-                prev_below_slow=False, prev_cmf_negative=False, prev_vix_high=False)
+                prev_cmf_negative=False, prev_vix_high=False)
     return Readings(**{**base, **kw})
 
 
@@ -49,54 +47,41 @@ def test_cmf_sign_follows_close_location():
     assert chaikin_money_flow(df, 5).iloc[-1] < -0.8
 
 
-def test_decide_aligned_reduce_and_exit():
-    assert decide(100, "normal", readings(), False, None, P)[0] == 100
-    # Un solo aviso de flujo no baja del 100% (hacen falta 2)
-    assert decide(100, "normal", readings(dd25=8), False, None, P)[0] == 100
-    assert decide(100, "normal", readings(dd25=8, obv_div=True), False, None, P)[0] == 50
-    # Primer cierre bajo la SMA40: 50%, nunca 0%
-    first = decide(100, "normal", readings(close=95, cmf=-0.2, dd25=9), False, None, P)
-    assert first[0] == 50
-    # Segundo cierre seguido bajo la SMA40 con confirmación de flujo: 0%
-    second = decide(100, "normal", readings(close=95, cmf=-0.2, prev_below_slow=True), False, None, P)
-    assert second[0] == 0 and "segundo cierre" in second[2][0]
-    # Segundo cierre bajo la media pero sin ninguna confirmación: no sale
-    assert decide(50, "normal", readings(close=99, sma_fast=105, cmf=0.05, dd25=2, prev_below_slow=True), False, None, P)[0] == 50
+def test_decide_band_exit():
+    assert decide(100, readings(), P) == (100, [])
+    # Perforar la SMA40 dentro de la banda (−1,5%) no da orden, aunque el flujo sea malo
+    assert decide(100, readings(close=99, sma_fast=95, dd25=12, cmf=-0.3, obv_div=True, vix=40.0), P)[0] == 100
+    new, reasons = decide(100, readings(close=98.4), P)
+    assert new == 0 and "banda de salida" in reasons[0]
 
 
-def test_decide_reentry_paths():
-    assert decide(0, "normal", readings(), False, None, P)[0] == 100
-    bear = readings(close=90, sma_fast=95, cmf=-0.1, dd25=8)
-    assert decide(0, "normal", bear, False, None, P)[0] == 0
-    assert decide(0, "normal", bear, True, None, P)[:2] == (50, "rebote")
-    # El 50% de rebote se deshace si el cierre semanal pierde el mínimo del intento
-    assert decide(50, "rebote", bear, False, 92.0, P)[0] == 0
-    assert decide(50, "rebote", bear, False, 85.0, P)[:2] == (50, "rebote")
+def test_decide_band_entry():
+    assert decide(0, readings(close=90), P) == (0, [])
+    # Sobre la media pero dentro de la banda de entrada (+1%): se sigue fuera
+    assert decide(0, readings(close=100.9), P)[0] == 0
+    new, reasons = decide(0, readings(close=101.1, sma_fast=95), P)
+    assert new == 100 and "banda de entrada" in reasons[0]
 
 
-def test_rally_attempt_ftd_window():
-    p = RegimeParams()
-    rally = RallyAttempt(low=90.0)
-    closes = [91, 91.5, 91.6, 91.7, 93.0]  # día 1..5; el día 5 sube +1,4%
-    prev_close, prev_vol = 90.5, 1000.0
-    for i, c in enumerate(closes):
-        row = pd.Series({"low": 90.5, "close": c, "volume": 1100.0 + i})
-        rally.update(row, prev_close, prev_vol, pd.Timestamp("2024-01-01") + pd.Timedelta(days=i), p)
-        prev_close, prev_vol = c, row["volume"]
-    assert rally.day == 5 and rally.ftd_date is not None
-    # Si después pierde el mínimo del intento, el FTD queda anulado
-    rally.update(pd.Series({"low": 89.0, "close": 89.5, "volume": 900.0}), 93.0, 1104.0, pd.Timestamp("2024-01-08"), p)
-    assert rally.ftd_date is None and rally.low == 89.0
+def test_band_zero_is_plain_sma():
+    p = RegimeParams(exit_band_pct=0, enter_band_pct=0)
+    assert decide(100, readings(close=99.9), p)[0] == 0
+    assert decide(0, readings(close=100.1), p)[0] == 100
 
 
-def test_rally_attempt_resets_on_new_low_and_ignores_early_jump():
-    p = RegimeParams()
-    rally = RallyAttempt(low=90.0)
-    rally.update(pd.Series({"low": 90.5, "close": 92.0, "volume": 2000.0}), 90.6, 1000.0, pd.Timestamp("2024-01-01"), p)
-    rally.update(pd.Series({"low": 91.0, "close": 94.0, "volume": 3000.0}), 92.0, 2000.0, pd.Timestamp("2024-01-02"), p)
-    assert rally.day == 2 and rally.ftd_date is None  # +2% el día 2 no es FTD
-    rally.update(pd.Series({"low": 89.0, "close": 89.5, "volume": 1000.0}), 94.0, 3000.0, pd.Timestamp("2024-01-03"), p)
-    assert rally.low == 89.0 and rally.day == 0
+def test_flow_warnings_are_context_only():
+    r = readings(dd25=9, cmf=-0.2, prev_cmf_negative=True, obv_div=True, vix=30.0, prev_vix_high=True)
+    assert len(r.flow_warnings(P)) == 4
+    assert decide(100, r, P)[0] == 100
+
+
+def test_replay_whipsaw_inside_band_makes_no_switch():
+    p = RegimeParams(**SMALL)
+    close = [100.0] * 25 + [99.5, 100.4, 99.6, 100.3] * 3  # viernes alternos ±0,5% alrededor de la media
+    weekly_close = [c for c in close for _ in range(5)]
+    d = daily_indicators(ohlcv(weekly_close), None, p)
+    rep = replay(d, weekly_frame(d, p), p)
+    assert rep.switches == [] and rep.exposure == 0
 
 
 def test_single_friday_crash_is_evaluated_with_thursday_close():
@@ -151,8 +136,9 @@ def test_build_regime_strategy_uptrend():
     close = list(100 * np.cumprod(1 + 0.002 + rng.normal(0, 0.004, 400)))
     res = build_regime_strategy("sp500_regime", regime_cfg(), FakeService(ohlcv(close, list(rng.uniform(900, 1100, 400)))), now=AFTER_CLOSE)
     assert res.error is None
-    assert res.exposure in (50, 100) and res.trend == "alcista"
-    assert {c.id for c in res.checks} == {"trend", "dd", "cmf", "obv", "vix"}
+    assert res.exposure == 100 and res.trend == "alcista"
+    assert {c.id for c in res.checks} == {"trend", "cross", "dd", "cmf", "obv", "vix"}
+    assert res.exit_line < res.sma_slow < res.enter_line and len(res.chart.exit_line) == len(res.chart.dates)
     assert next(c for c in res.checks if c.id == "vix").status == "na"  # sin VIX la regla sigue funcionando
     assert set(res.perf) == {"strategy", "sma_only", "buy_hold"}
     assert res.explanation and res.chart.dates
@@ -170,3 +156,5 @@ def test_config_validation():
         RegimeStrategyConfig(name="x", sma_fast=40, sma_slow=10)
     with pytest.raises(ValueError):
         RegimeStrategyConfig(name="x", dd_aligned_max=7, dd_reduce=7)
+    with pytest.raises(ValueError):
+        RegimeStrategyConfig(name="x", exit_band_pct=-1)

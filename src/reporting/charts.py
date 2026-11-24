@@ -226,7 +226,7 @@ def r_bars(trades, title: str) -> Markup:
 
 
 def regime_chart(chart, switches, title: str) -> Markup:
-    """Cierre semanal con SMA rápida y lenta, fondo según la exposición decidida (0/50/100%) y marcas en cada traspaso."""
+    """Cierre semanal con SMA rápida y lenta, línea de salida (banda), fondo según la exposición (0/100%) y marcas en cada traspaso."""
     n = len(chart.dates)
     if n < 2:
         return Markup('<div class="spark-empty">sin histórico</div>')
@@ -257,6 +257,8 @@ def regime_chart(chart, switches, title: str) -> Markup:
                 out.append(f'<line x1="{xs[i]:.1f}" x2="{xs[i]:.1f}" y1="{height - bottom}" y2="{height - bottom + 4}" class="tc-tick"/>'
                            f'<text x="{xs[i]:.1f}" y="{height - 8}" text-anchor="middle" class="tc-axis">{d[5:7]}/{d[2:4]}</text>')
     out.append(f'<path d="{_path(xs, chart.sma_slow, y)}" class="tc-sma"/>')
+    if chart.exit_line:
+        out.append(f'<path d="{_path(xs, chart.exit_line, y)}" class="rc-band"/>')
     out.append(f'<path d="{_path(xs, chart.sma_fast, y)}" class="rc-fast"/>')
     out.append(f'<path d="{_path(xs, chart.close, y)}" class="tc-close"/>')
 
@@ -279,8 +281,8 @@ def regime_chart(chart, switches, title: str) -> Markup:
             out.append(f'<circle cx="{xs[-1]:.1f}" cy="{y(value):.1f}" r="4" class="{cls}"/>')
     for i, d in enumerate(chart.dates):
         bits = [f"Semana {d}", f"Cierre {chart.close[i]:,.2f}"]
-        for lbl, series in (("SMA rápida", chart.sma_fast), ("SMA lenta", chart.sma_slow)):
-            if series[i] is not None:
+        for lbl, series in (("SMA rápida", chart.sma_fast), ("SMA lenta", chart.sma_slow), ("Línea de salida", chart.exit_line)):
+            if i < len(series) and series[i] is not None:
                 bits.append(f"{lbl} {series[i]:,.2f}")
         if chart.dd25[i] is not None:
             bits.append(f"Días de distribución {chart.dd25[i]}")

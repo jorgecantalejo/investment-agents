@@ -167,13 +167,14 @@ Crea `data/handoff/<fecha>_<perfiles>/`, ejecuta el pipeline, lanza en paralelo 
 (macro → activos → un supervisor por perfil), comprueba cada respuesta con `--handoff-status`, repite hasta generar
 los informes y muestra el resumen.
 
-## Estrategia experimental: S&P 500, régimen semanal y flujo institucional
+## Estrategia experimental: S&P 500, SMA40 semanal con banda de tolerancia
 
-Exposición 0/50/100% entre un fondo indexado al S&P 500 y un monetario en EUR, decidida solo con el cierre semanal de SPY:
-medias de 10 y 40 semanas, días de distribución (25 sesiones), CMF20, divergencia OBV, VIX y Follow-Through Day para
-reentrar. Configuración en `regime_strategies.sp500_regime`; reglas, checklist del viernes, protocolo ante un desplome de
-un día, resultados y limitaciones en [`estrategias/sp500_regimen.md`](estrategias/sp500_regimen.md); indicador de
-TradingView en `estrategias/sp500_regimen.pine`. Se calcula al generar la web (`--site`).
+Exposición 0/100% entre un fondo indexado al S&P 500 y un monetario en EUR, decidida solo con el cierre semanal de SPY:
+se sale con un cierre más de un 1,5% bajo la SMA de 40 semanas y se vuelve a entrar con un cierre más de un 1% por encima.
+Días de distribución, CMF20, OBV, VIX y el cruce SMA10/40 se muestran solo como contexto. Configuración en
+`regime_strategies.sp500_regime`; reglas, checklist del viernes, protocolo ante un desplome de un día, resultados y
+limitaciones en [`estrategias/sp500_regimen.md`](estrategias/sp500_regimen.md); indicador de TradingView en
+`estrategias/sp500_regimen.pine`. Se calcula al generar la web (`--site`).
 
 ## Estrategia experimental: oro, seguimiento de tendencia
 
@@ -262,7 +263,7 @@ Sin histórico: cada generación sobrescribe las mismas URLs y borra de `docs/` 
 - **Portada** (`index.html`): régimen macro, indicadores, datos de FRED, resumen de la semana, tarjetas de los activos con
   la marca de cambio respecto al análisis completo anterior (p. ej. «4→6», «esperar→entrada pequeña»), eventos,
   comparativa y fuentes. Sale del último análisis completo guardado en `data/runs/` (con macro y analistas).
-- **S&P 500** (`sp500.html`): 1) análisis semanal; 2) estrategia de régimen semanal y flujo (exposición 0/50/100%);
+- **S&P 500** (`sp500.html`): 1) análisis semanal; 2) estrategia SMA40 semanal con banda (exposición 0/100%);
   3) checklist del viernes; 4) histórico de traspasos y comparativa; 5) reglas. Ver `estrategias/sp500_regimen.md`.
 - **Oro** (`oro.html`): 1) datos e indicadores del análisis semanal; 2) estrategia de tendencia; 3) factores macro.
   La estrategia y los factores se **recalculan cada vez** que se genera la web, así que se pueden publicar a diario sin LLM.

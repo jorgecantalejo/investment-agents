@@ -1,7 +1,7 @@
 {% extends "site/_base.html" %}
 {% from "_macros.html" import signed with context %}
 {% block title %}S&amp;P 500{% endblock %}
-{% block description %}S&P 500: análisis semanal y estrategia de régimen semanal con flujo institucional (exposición 0/50/100%).{% endblock %}
+{% block description %}S&P 500: análisis semanal y estrategia de régimen semanal (SMA40 con banda de tolerancia, exposición 0/100%).{% endblock %}
 {% block content %}
 {% set c = asset_cards.get('sp500') %}{% set r = sp500_regime %}
 {% set prm = r.audit.params if r and r.audit else {} %}
@@ -13,7 +13,7 @@
     <span>Análisis <b>{{ date or '—' }}</b> (semanal)</span>
     {% if r and r.last_date %}<span>Estrategia <b>{{ r.last_date }}</b> (decisión los viernes)</span>{% endif %}
   </div>
-  <nav class="small" style="margin-top:10px; display:flex; gap:14px; flex-wrap:wrap"><a href="#analisis">1 · Análisis</a><a href="#estrategia">2 · Régimen y flujo</a><a href="#checklist">3 · Checklist del viernes</a><a href="#historico">4 · Histórico y resultados</a><a href="#reglas">5 · Reglas</a></nav>
+  <nav class="small" style="margin-top:10px; display:flex; gap:14px; flex-wrap:wrap"><a href="#analisis">1 · Análisis</a><a href="#estrategia">2 · Régimen semanal</a><a href="#checklist">3 · Checklist del viernes</a><a href="#historico">4 · Histórico y resultados</a><a href="#reglas">5 · Reglas</a></nav>
 </div>
 
 <!-- ================= 1. ANÁLISIS ================= -->
@@ -21,7 +21,7 @@
 {% with change = changes.get('sp500'), asset_label = "el S&P 500" %}{% include "site/_asset_card.html" %}{% endwith %}
 
 <!-- ================= 2. ESTRATEGIA ================= -->
-<div class="section-head" id="estrategia"><div><div class="eyebrow">2 · Estrategia experimental</div><h2>Régimen semanal y flujo institucional</h2></div><span class="small faint">Reglas deterministas en Python · se decide solo con el cierre del viernes</span></div>
+<div class="section-head" id="estrategia"><div><div class="eyebrow">2 · Estrategia experimental</div><h2>SMA40 semanal con banda de tolerancia</h2></div><span class="small faint">Reglas deterministas en Python · se decide solo con el cierre del viernes</span></div>
 {% if not r %}
 <div class="panel"><p class="na" style="margin:0">No hay ninguna estrategia de régimen configurada para el S&amp;P 500.</p></div>
 {% elif r.error %}
@@ -32,7 +32,7 @@
     <div>
       <div class="label">Exposición vigente · decisión del viernes {{ r.decision_date }}</div>
       <div style="font-size:2.4rem; font-weight:700; line-height:1.1" class="exp-{{ r.exposure }}">{{ r.exposure }}% <span class="small muted" style="font-size:.9rem; font-weight:500">en el fondo S&amp;P 500 · {{ 100 - r.exposure }}% en el monetario</span></div>
-      <div class="small faint" style="margin-top:4px">{{ r.vehicle }}{% if r.mode == 'rebote' %} · 50% de rebote tras FTD{% endif %}</div>
+      <div class="small faint" style="margin-top:4px">{{ r.vehicle }}</div>
     </div>
     <div style="text-align:right">
       <div class="label">Acción</div>
@@ -46,14 +46,15 @@
     <span><i class="sw" style="border-color:#3987e5"></i>Cierre semanal {{ r.last_close | num }}</span>
     <span><i class="sw" style="border-color:#9a7bd8; border-top-style:dashed"></i>SMA{{ prm.sma_fast }} semanas {{ r.sma_fast | num }}</span>
     <span><i class="sw" style="border-color:#d95926"></i>SMA{{ prm.sma_slow }} semanas {{ r.sma_slow | num }}</span>
-    <span><i class="sw-band" style="background:var(--pos-soft)"></i>Fondo: 100% (intenso) / 50% (suave) / 0% (sin color)</span>
+    <span><i class="sw" style="border-color:#d95926; border-top-style:dotted"></i>Línea de salida (−{{ prm.exit_band_pct }}%) {{ r.exit_line | num }}</span>
+    <span><i class="sw-band" style="background:var(--pos-soft)"></i>Fondo: invertido al 100% (sin color = monetario)</span>
     <span><b class="pos">▲</b> sube exposición</span><span><b class="neg">▼</b> baja exposición</span>
   </div>
   <div class="chart-box">{{ regime_chart(r.chart, r.switches, r.name ~ ': cierre semanal, medias y exposición') }}</div>
 </div>
 
 <!-- ================= 3. CHECKLIST ================= -->
-<div class="section-head" id="checklist"><div><div class="eyebrow">3 · Checklist del viernes</div><h2>Los datos que deciden</h2></div><span class="small faint">{{ 'Cierre semanal ' ~ r.decision_date if r.week_complete else 'Lectura provisional a ' ~ r.last_date ~ ' (la semana no ha cerrado)' }}</span></div>
+<div class="section-head" id="checklist"><div><div class="eyebrow">3 · Checklist del viernes</div><h2>La regla y el contexto</h2></div><span class="small faint">{{ 'Cierre semanal ' ~ r.decision_date if r.week_complete else 'Lectura provisional a ' ~ r.last_date ~ ' (la semana no ha cerrado)' }}</span></div>
 <div class="panel" style="padding:0; overflow:hidden">
   <div class="table-wrap"><table class="data">
     <tr><th>Dato</th><th class="num">Valor</th><th>Regla</th><th>Lectura</th></tr>
@@ -66,6 +67,7 @@
     </tr>
     {% endfor %}
   </table></div>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">Solo la fila 1 da órdenes. El resto es contexto: el volumen diario es demasiado nervioso para mover un fondo con traspasos que tardan días.</p>
 </div>
 <details class="panel" style="margin-top:12px"><summary>Días de distribución en las últimas {{ prm.dd_window }} sesiones ({{ r.distribution_days | length }})</summary>
   {% if r.distribution_days %}
@@ -81,17 +83,17 @@
 <div class="panel" style="padding:0; overflow:hidden">
   <div class="table-wrap"><table class="data">
     <tr><th></th><th class="num">Rent. anual</th><th class="num">Volatilidad</th><th class="num">Máx. caída</th><th class="num">Peor año</th><th class="num">Exposición media</th></tr>
-    {% for key, label in [('strategy', 'Esta estrategia'), ('sma_only', 'Solo SMA' ~ prm.sma_slow ~ ' semanal (0/100%)'), ('buy_hold', 'Comprar y mantener')] %}
+    {% for key, label in [('strategy', 'Esta estrategia'), ('sma_only', 'SMA' ~ prm.sma_slow ~ ' semanal sin banda'), ('buy_hold', 'Comprar y mantener')] %}
     {% set x = r.perf.get(key) %}{% if x %}
     <tr><th>{{ label }}</th><td class="num">{{ x.cagr_pct | pct }}</td><td class="num">{{ x.vol_pct | pct(false) }}</td><td class="num neg">{{ x.max_dd_pct | pct }}</td><td class="num">{{ x.worst_year_pct | pct }}</td><td class="num">{{ x.avg_exposure_pct | pct(false) }}</td></tr>
     {% endif %}{% endfor %}
   </table></div>
-  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">SPY con dividendos, en USD (sin efecto divisa ni comisiones del fondo). El monetario se supone al {{ prm.cash_rate_pct }}% anual. Traspaso ejecutado {{ prm.execution_lag }} sesiones después de la decisión. Los parámetros se fijaron mirando este mismo histórico: el resultado es optimista.</p>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">SPY con dividendos, en USD (sin efecto divisa ni comisiones del fondo). El monetario se supone al {{ prm.cash_rate_pct }}% anual. Traspaso ejecutado {{ prm.execution_lag }} sesiones después de la decisión. La banda (−{{ prm.exit_band_pct }}% / +{{ prm.enter_band_pct }}%) se eligió mirando este mismo histórico, aunque las bandas vecinas dan resultados parecidos: el resultado es algo optimista.</p>
 </div>
 {% if r.episodes %}
 <div class="panel" style="padding:0; overflow:hidden; margin-top:12px">
   <div class="table-wrap"><table class="data">
-    <tr><th>Caída del S&amp;P 500 (pico → mínimo)</th><th class="num">Comprar y mantener</th><th class="num">Esta estrategia</th><th class="num">Solo SMA{{ prm.sma_slow }}</th></tr>
+    <tr><th>Caída del S&amp;P 500 (pico → mínimo)</th><th class="num">Comprar y mantener</th><th class="num">Esta estrategia</th><th class="num">SMA{{ prm.sma_slow }} sin banda</th></tr>
     {% for e in r.episodes %}<tr><td class="mono">{{ e.start }} → {{ e.end }}</td><td class="num neg">{{ e.buy_hold | pct }}</td><td class="num {{ e.strategy | sign_class }}">{{ e.strategy | pct }}</td><td class="num {{ e.sma_only | sign_class }}">{{ e.sma_only | pct }}</td></tr>{% endfor %}
   </table></div>
 </div>
@@ -108,11 +110,11 @@
 <div class="panel small">
   <ol style="margin-top:0">
     <li><b>Solo cierres semanales.</b> Las decisiones se toman con el cierre del viernes y el traspaso se ordena después; ningún día aislado cambia la exposición.</li>
-    <li><b>100% (tendencia y flujo alineados).</b> Cierre &gt; SMA{{ prm.sma_slow }}s, SMA{{ prm.sma_fast }}s &gt; SMA{{ prm.sma_slow }}s, como mucho {{ prm.dd_aligned_max }} días de distribución en {{ prm.dd_window }} sesiones, CMF{{ prm.cmf_window }} &gt; 0, sin divergencia OBV y VIX ≤ {{ prm.vix_max }}.</li>
-    <li><b>Bajar al 50%.</b> Primer cierre semanal bajo la SMA{{ prm.sma_slow }}s, o {{ prm.warnings_to_reduce }} avisos a la vez entre: ≥ {{ prm.dd_reduce }} días de distribución, CMF negativo dos viernes, divergencia OBV y VIX &gt; {{ prm.vix_max }} dos viernes.</li>
-    <li><b>Salir al 0%.</b> Segundo cierre semanal seguido bajo la SMA{{ prm.sma_slow }}s, confirmado por ≥ {{ prm.dd_reduce }} días de distribución, CMF negativo o SMA{{ prm.sma_fast }}s &lt; SMA{{ prm.sma_slow }}s.</li>
-    <li><b>Volver a entrar.</b> Al 100% en cuanto todo vuelva a estar alineado; al 50% con un Follow-Through Day (día {{ prm.ftd_first_day }}-{{ prm.ftd_last_day }} del rebote, subida ≥ {{ prm.ftd_gain_pct }}% con más volumen) o cuando la tendencia semanal se recupere. Ese 50% de rebote se deshace si un cierre semanal pierde el mínimo del intento.</li>
+    <li><b>Salir al 0%.</b> Cierre semanal más de un {{ prm.exit_band_pct }}% por debajo de la SMA{{ prm.sma_slow }}s: traspaso total al monetario.</li>
+    <li><b>Volver al 100%.</b> Cierre semanal más de un {{ prm.enter_band_pct }}% por encima de la SMA{{ prm.sma_slow }}s: traspaso total al fondo.</li>
+    <li><b>Zona de tolerancia.</b> Entre las dos líneas no se hace nada: perforar la media un 0,5% un viernes y recuperarla el siguiente no genera dos traspasos.</li>
     <li><b>Choque de un día.</b> Si el viernes cae ≥ {{ prm.shock_day_pct }}%, ese viernes se decide con el cierre del jueves; el desplome cuenta la semana siguiente, cuando ya se ve si hubo rebote.</li>
+    <li><b>El volumen no da órdenes.</b> Días de distribución, CMF, OBV, VIX y el cruce SMA{{ prm.sma_fast }}/{{ prm.sma_slow }} se muestran como contexto. La versión anterior los usaba para graduar al 50% y reentrar con Follow-Through Days, y en 1993-2026 rendía peor que la media sola.</li>
   </ol>
   <p class="faint" style="margin:6px 0 0">Documento completo con checklist, protocolo de excepciones y script para TradingView: <a href="https://github.com/jorgecantalejo/investment-agents/blob/main/estrategias/sp500_regimen.md" target="_blank" rel="noopener">estrategias/sp500_regimen.md</a>.</p>
 </div>
