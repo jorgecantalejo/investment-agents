@@ -17,75 +17,7 @@
 
 <!-- ================= 1. ANÁLISIS ================= -->
 <div class="section-head" id="analisis"><div><div class="eyebrow">1 · Análisis semanal</div><h2>Datos e indicadores</h2></div></div>
-{% if not c %}
-<div class="panel"><p class="na" style="margin:0">El último análisis semanal no incluye el oro.</p></div>
-{% else %}
-<article class="card">
-  <div class="card-head">
-    <div>
-      <h3 style="margin:0; font-size:1.05rem">{{ s.name }}</h3>
-      <div class="ticker">{{ s.ticker }} · {{ s.asset_class }} · datos {{ s.quality.level | term | lower }}</div>
-      {% if d %}<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-        <span class="pill act-{{ d.final_action }}">{{ d.final_action | action_label }}</span>
-        {% if a %}<span class="small muted">convicción {{ a.conviction | level_label_f | lower }}</span>{% endif %}
-        {% if change %}<span class="chg {{ change.direction }}" title="Respecto al análisis del {{ change.date }}">{% if change.score_from is not none and change.score_from != change.score_to %}puntuación {{ change.score_from }}→{{ change.score_to }}{% elif change.action_from == change.action_to %}= sin cambios desde el {{ change.date }}{% endif %}{% if change.action_from and change.action_from != change.action_to %} · {{ change.action_from | action_label | lower }}→{{ change.action_to | action_label | lower }}{% endif %}</span>{% endif %}
-      </div>{% endif %}
-    </div>
-    {{ score_ring(a.opportunity_score if a else none) }}
-  </div>
-  {% if p %}<div style="margin-top:12px">{{ sparkline(p.sparkline, s.name ~ ' · 12 meses (' ~ p.currency ~ ')', 360, 56) }}</div>{% endif %}
-
-  {% if a %}
-  <div class="sig">
-    <div><div class="label">Valuación</div><div class="v">{{ a.valuation | term }}</div></div>
-    <div><div class="label">Momentum</div><div class="v">{{ a.momentum | term }}</div></div>
-    <div><div class="label">Sentimiento</div><div class="v">{{ a.sentiment | term }}</div></div>
-  </div>
-  <p>{{ a.summary }}</p>
-  <div class="two">
-    <div>{% if a.key_risks %}<h3>Riesgos</h3><ul class="small">{% for r in a.key_risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}</div>
-    <div>
-      {% if d and d.conditions %}<h3>Condiciones de entrada</h3><ul class="small">{% for x in d.conditions %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
-      {% if d and d.invalidation %}<h3>Invalidación de la tesis</h3><ul class="small">{% for x in d.invalidation %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
-    </div>
-  </div>
-  <details><summary>Justificación de las señales</summary>
-    <p class="small"><b>Valuación:</b> {{ a.valuation_rationale }}</p>
-    <p class="small"><b>Momentum:</b> {{ a.momentum_rationale }}</p>
-    <p class="small"><b>Sentimiento:</b> {{ a.sentiment_rationale }}</p>
-    {% if a.claims %}{{ claim_list(a.claims) }}{% endif %}
-  </details>
-  {% else %}
-  <p class="na">Sin análisis cualitativo esta semana.</p>
-  {% endif %}
-
-  <details open><summary>Datos objetivos</summary>
-  {% if p %}
-    <table class="data">
-      <tr><th>Precio ({{ p.last_date }})</th><td class="num">{{ p.last_price | num }} {{ p.currency }}</td></tr>
-      {% for k in ['1m','3m','6m','12m'] %}
-      <tr><th>Rent. {{ k }} ({{ p.currency }}{% if p.currency != p.report_currency %} / {{ p.report_currency }}{% endif %})</th><td class="num">{{ signed(p.returns_pct[k]) }}{% if p.currency != p.report_currency %} / {{ signed(p.returns_report_ccy_pct[k]) }}{% endif %}</td></tr>
-      {% endfor %}
-      <tr><th>SMA 50 / SMA 200</th><td class="num">{{ p.sma50 | num }} / {{ p.sma200 | num }}</td></tr>
-      <tr><th>Por encima SMA 50 / 200</th><td class="num">{{ p.above_sma50 | yesno }} / {{ p.above_sma200 | yesno }}</td></tr>
-      <tr><th>Máximo 12m ({{ p.recent_high_date or '—' }})</th><td class="num">{{ p.recent_high | num }}</td></tr>
-      <tr><th>Drawdown actual / máx. 12m</th><td class="num">{{ signed(p.drawdown_from_recent_high_pct) }} / {{ signed(p.max_drawdown_window_pct) }}</td></tr>
-      <tr><th>Volatilidad anualizada</th><td class="num">{{ p.volatility_annualized_pct | pct(false) }}</td></tr>
-      {% if p.benchmark_ticker %}<tr><th>vs {{ p.benchmark_ticker }} (3m / 12m)</th><td class="num">{{ signed(p.relative_vs_benchmark_pp['3m'], ' pp') }} / {{ signed(p.relative_vs_benchmark_pp['12m'], ' pp') }}</td></tr>{% endif %}
-      <tr><th>Tendencia cuantitativa</th><td class="num">{{ p.quant_trend | term }}</td></tr>
-    </table>
-    {% if s.quality.issues %}<p class="small muted">Limitaciones: {{ s.quality.issues | join('; ') }}</p>{% endif %}
-  {% else %}
-    <p class="na">{{ s.error }}</p>
-  {% endif %}
-  </details>
-  <details><summary>Fuentes ({{ c.sources | length }})</summary>
-  {% if c.sources %}
-    <ul class="small">{% for src in c.sources %}<li><span class="mono faint">[{{ src.id }}]</span> <a href="{{ src.url }}" target="_blank" rel="noopener">{{ src.title }}</a> <span class="faint">· {{ src.published_date or 'sin fecha' }}</span></li>{% endfor %}</ul>
-  {% else %}<p class="na">Sin fuentes web.</p>{% endif %}
-  </details>
-</article>
-{% endif %}
+{% with asset_label = "el oro" %}{% include "site/_asset_card.html" %}{% endwith %}
 
 <!-- ================= 2. ESTRATEGIA ================= -->
 <div class="section-head" id="estrategia"><div><div class="eyebrow">2 · Estrategia experimental</div><h2>Seguimiento de tendencia</h2></div><span class="small faint">Reglas deterministas en Python · se actualiza cada día tras el cierre de Xetra</span></div>

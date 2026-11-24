@@ -74,6 +74,15 @@ class YFinanceProvider:
         ohlc.columns = ["open", "high", "low", "close"]
         return ohlc
 
+    def get_ohlcv_history(self, ticker: str, period: str) -> pd.DataFrame:
+        """Velas diarias con volumen; descarta sesiones sin volumen (Yahoo a veces publica la del día con 0)."""
+        df = self._history(ticker, period)
+        if "Volume" not in df:
+            raise InvalidTickerError(f"'{ticker}' no tiene volumen en el proveedor")
+        ohlcv = df[["Open", "High", "Low", "Close", "Volume"]].dropna().astype(float)
+        ohlcv.columns = ["open", "high", "low", "close", "volume"]
+        return ohlcv[ohlcv["volume"] > 0]
+
     def get_valuation(self, ticker: str) -> ValuationMetrics:
         try:
             info = retry_call(lambda: yf.Ticker(ticker).info or {}, retry_on=_TRANSIENT, attempts=2, label=f"yfinance info {ticker}")

@@ -1,8 +1,8 @@
-"""Web pública de análisis (GitHub Pages): portada macro y página del oro.
+"""Web pública de análisis (GitHub Pages): portada macro y páginas del oro y del S&P 500.
 
 Sin histórico: cada generación sobrescribe las mismas URLs. Combina:
 - el último análisis semanal completo guardado en data/runs (macro, activos, supervisor),
-- la estrategia de tendencia del oro y el estudio de factores, recalculados al generar (se publican a diario).
+- la estrategia de tendencia del oro, el estudio de factores y la estrategia de régimen del S&P 500, recalculados al generar.
 
 La web es pública: el contexto de las plantillas no incluye capital, presupuestos ni importes en euros.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from src.core.errors import ReportError
-from src.models import FactorStudy, RunRecord, TrendStrategyResult
+from src.models import FactorStudy, RegimeStrategyResult, RunRecord, TrendStrategyResult
 from src.reporting.builder import build_context
 from src.reporting.html import make_env
 from src.storage.run_store import RunStore
@@ -23,8 +23,10 @@ from src.storage.run_store import RunStore
 logger = logging.getLogger(__name__)
 
 GOLD_ASSET_ID = "gold"
-PAGES = {GOLD_ASSET_ID: "oro.html"}  # activos con página propia; el resto se irá añadiendo
-NAV = [("index.html", "Mercado"), ("oro.html", "Oro")]
+SP500_ASSET_ID = "sp500"
+PAGES = {GOLD_ASSET_ID: "oro.html", SP500_ASSET_ID: "sp500.html"}  # activos con página propia; el resto se irá añadiendo
+NAV = [("index.html", "Mercado"), ("sp500.html", "S&P 500"), ("oro.html", "Oro")]
+TEMPLATES = {"index.html": "site/index.html", "oro.html": "site/oro.html", "sp500.html": "site/sp500.html"}
 MAX_RUNS_SCANNED = 60
 
 DIRECTION_LABELS = {"up": "Sube", "down": "Baja", "flat": "Estable", "insufficient_data": "insufficient_data"}
@@ -89,7 +91,7 @@ def changes_vs_previous(latest: RunRecord, records: list[RunRecord]) -> tuple[di
 
 
 def site_context(latest: RunRecord | None, records: list[RunRecord], gold_strategy: TrendStrategyResult | None,
-                 factors: FactorStudy | None, generated_at: str) -> dict[str, Any]:
+                 factors: FactorStudy | None, generated_at: str, sp500_regime: RegimeStrategyResult | None = None) -> dict[str, Any]:
     """Contexto común de las páginas. Reutiliza el del informe pero sin capital ni importes."""
     ctx: dict[str, Any] = {"run": None, "date": None, "cards": [], "macro": None, "supervisor": None, "indicators": {},
                            "best": [], "avoid": [], "macro_sources": [], "source_map": {}, "currency": "EUR"}
@@ -98,9 +100,10 @@ def site_context(latest: RunRecord | None, records: list[RunRecord], gold_strate
         ctx.update({k: full[k] for k in ("run", "date", "cards", "macro", "supervisor", "indicators", "best", "avoid",
                                           "macro_sources", "source_map", "currency")})
     changes, previous_date = changes_vs_previous(latest, records) if latest else ({}, None)
-    gold_card = next((c for c in ctx["cards"] if c["snapshot"].asset_id == GOLD_ASSET_ID), None)
-    ctx.update(changes=changes, previous_date=previous_date, pages=PAGES, nav=NAV, generated_at=generated_at,
-               gold_card=gold_card, change=changes.get(GOLD_ASSET_ID), gold_strategy=gold_strategy, factors=factors)
+    asset_cards = {c["snapshot"].asset_id: c for c in ctx["cards"]}
+    ctx.update(changes=changes, previous_date=previous_date, pages=PAGES, nav=NAV, generated_at=generated_at, asset_cards=asset_cards,
+               gold_card=asset_cards.get(GOLD_ASSET_ID), change=changes.get(GOLD_ASSET_ID), gold_strategy=gold_strategy, factors=factors,
+               sp500_regime=sp500_regime)
     return ctx
 
 
@@ -109,7 +112,7 @@ def render_site(ctx: dict[str, Any], templates_dir: Path) -> dict[str, str]:
     env.filters.update(factor_change=_factor_change, factor_direction=lambda v: DIRECTION_LABELS.get(v, v),
                        factor_signal=lambda v: SIGNAL_LABELS.get(v, v))
     pages = {}
-    for name, template in (("index.html", "site/index.html"), ("oro.html", "site/oro.html")):
+    for name, template in TEMPLATES.items():
         try:
             pages[name] = env.get_template(template).render(**ctx, page=name)
         except Exception as exc:
@@ -133,11 +136,11 @@ def write_site(pages: dict[str, str], out_dir: Path) -> list[Path]:
 
 
 def build_site(runs_dir: Path, templates_dir: Path, out_dir: Path, gold_strategy: TrendStrategyResult | None,
-               factors: FactorStudy | None, now: datetime | None = None) -> list[Path]:
+               factors: FactorStudy | None, now: datetime | None = None, sp500_regime: RegimeStrategyResult | None = None) -> list[Path]:
     records = load_runs(runs_dir)
     latest = pick_latest(records)
     if latest is None:
         logger.warning("No hay ningún análisis semanal completo en %s: la portada saldrá sin análisis", runs_dir)
     generated_at = (now or datetime.now()).isoformat(timespec="seconds")
-    ctx = site_context(latest, records, gold_strategy, factors, generated_at)
+    ctx = site_context(latest, records, gold_strategy, factors, generated_at, sp500_regime)
     return write_site(render_site(ctx, templates_dir), out_dir)

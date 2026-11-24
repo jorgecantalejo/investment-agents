@@ -277,6 +277,95 @@ class TrendStrategyResult(BaseModel):
     error: str | None = None
 
 
+RegimeTrend = Literal["alcista", "bajista", "transicion"]
+
+
+class RegimeCheck(BaseModel):
+    """Un dato del checklist del viernes: valor, umbral de la regla y lectura."""
+
+    id: str
+    label: str
+    value: str
+    rule: str
+    status: Literal["ok", "aviso", "alerta", "na"]
+    note: str = ""
+
+
+class RegimeSwitch(BaseModel):
+    date: str = Field(description="Viernes (última sesión de la semana) de la decisión")
+    from_pct: int
+    to_pct: int
+    reasons: list[str] = Field(default_factory=list)
+
+
+class RegimePerf(BaseModel):
+    cagr_pct: float | None = None
+    vol_pct: float | None = None
+    max_dd_pct: float | None = None
+    worst_year_pct: float | None = None
+    total_pct: float | None = None
+    avg_exposure_pct: float | None = None
+
+
+class RegimeChart(BaseModel):
+    """Velas semanales recientes para el gráfico (None donde la media aún no existe)."""
+
+    dates: list[str] = Field(default_factory=list)
+    close: list[float] = Field(default_factory=list)
+    sma_fast: list[float | None] = Field(default_factory=list)
+    sma_slow: list[float | None] = Field(default_factory=list)
+    exposure: list[int | None] = Field(default_factory=list)
+    dd25: list[int | None] = Field(default_factory=list)
+
+
+class FlowDay(BaseModel):
+    date: str
+    change_pct: float
+    volume_change_pct: float
+
+
+class RegimeStrategyResult(BaseModel):
+    """Estado de la estrategia de régimen semanal y flujo institucional. Todo calculado por Python."""
+
+    id: str
+    name: str
+    ticker: str
+    vehicle: str = ""
+    asset_id: str | None = None
+    exposure: int | None = Field(None, description="Exposición vigente (%) según la última decisión semanal")
+    mode: Literal["normal", "rebote"] = "normal"
+    decision_date: str | None = Field(None, description="Última semana cerrada evaluada")
+    changed: bool = Field(False, description="La última decisión cambia la exposición: hay que ordenar un traspaso")
+    previous_exposure: int | None = None
+    provisional_exposure: int | None = Field(None, description="Lo que diría la regla si la semana en curso cerrara hoy")
+    provisional_reasons: list[str] = Field(default_factory=list)
+    week_complete: bool = True
+    shock_week: bool = False
+    last_date: str | None = None
+    last_close: float | None = None
+    sma_fast: float | None = None
+    sma_slow: float | None = None
+    trend: RegimeTrend | None = None
+    dd25: int | None = None
+    distribution_days: list[FlowDay] = Field(default_factory=list)
+    cmf: float | None = None
+    obv_divergence: bool | None = None
+    vix: float | None = None
+    rally_day: int | None = Field(None, description="Día del intento de rebote en curso (solo con exposición 0%)")
+    rally_low: float | None = None
+    ftd_date: str | None = None
+    checks: list[RegimeCheck] = Field(default_factory=list)
+    explanation: list[str] = Field(default_factory=list)
+    switches: list[RegimeSwitch] = Field(default_factory=list)
+    switches_per_year: float | None = None
+    since: str | None = None
+    perf: dict[str, RegimePerf] = Field(default_factory=dict)
+    episodes: list[dict[str, Any]] = Field(default_factory=list)
+    chart: RegimeChart = RegimeChart()
+    audit: TrendAudit | None = None
+    error: str | None = None
+
+
 class FactorRegime(BaseModel):
     """Rentabilidad posterior del activo en los meses en que el factor subía (o bajaba)."""
 

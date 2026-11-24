@@ -70,7 +70,7 @@ def test_pages_render_without_private_amounts(run_record):
 def test_index_without_analysis_and_stale_pages_removed(tmp_path):
     (tmp_path / "informe_2026-11-01.html").write_text("viejo", encoding="utf-8")
     paths = build_site(tmp_path / "runs", TEMPLATES, tmp_path, _gold_strategy(), None)
-    assert sorted(p.name for p in paths) == ["index.html", "oro.html"]
+    assert sorted(p.name for p in paths) == ["index.html", "oro.html", "sp500.html"]
     assert not (tmp_path / "informe_2026-11-01.html").exists() and (tmp_path / ".nojekyll").exists()
     assert "Todavía no hay ningún análisis semanal" in (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "Estudio de factores no disponible" in (tmp_path / "oro.html").read_text(encoding="utf-8")

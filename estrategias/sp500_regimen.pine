@@ -1,0 +1,204 @@
+//@version=5
+// S&P 500 · régimen semanal y flujo institucional (exposición 0 / 50 / 100%).
+// Mismas reglas que src/quant/regime.py (documento: estrategias/sp500_regimen.md).
+// Usar sobre el gráfico SEMANAL (1W) de AMEX:SPY. Los datos diarios se leen con request.security_lower_tf.
+// Diferencia conocida con Python: TradingView usa precios sin ajustar por dividendos (las medias difieren ligeramente).
+indicator("S&P 500 · régimen semanal y flujo", shorttitle="SP500 régimen", overlay=true, max_labels_count=500)
+
+// ---------- Parámetros (iguales que regime_strategies.sp500_regime en config.yaml) ----------
+smaFastLen = input.int(10, "SMA rápida (semanas)", minval=2)
+smaSlowLen = input.int(40, "SMA lenta (semanas)", minval=10)
+ddWindow   = input.int(25, "Ventana de días de distribución (sesiones)")
+ddDropPct  = input.float(0.2, "Caída mínima de un día de distribución (%)")
+ddReduce   = input.int(7, "Días de distribución que cuentan como aviso")
+ddAligned  = input.int(5, "Máx. días de distribución con flujo alineado")
+cmfLen     = input.int(20, "Chaikin Money Flow (sesiones)")
+obvWeeks   = input.int(10, "Divergencia OBV (semanas)")
+vixMax     = input.float(25.0, "VIX máximo")
+warnNeed   = input.int(2, "Avisos simultáneos para bajar del 100% al 50%")
+ftdGain    = input.float(1.25, "FTD: subida mínima (%)")
+ftdFirst   = input.int(4, "FTD: primer día del intento")
+ftdLast    = input.int(7, "FTD: último día del intento")
+shockPct   = input.float(4.0, "Choque: caída de la última sesión de la semana (%)")
+vixSym     = input.symbol("CBOE:VIX", "Símbolo del VIX")
+showFlow   = input.bool(true, "Marcar semanas con ≥2 días de distribución / acumulación")
+
+if not timeframe.isweekly
+    runtime.error("Este indicador está pensado para el gráfico SEMANAL (1W) de SPY")
+
+// ---------- Cálculos en velas diarias ----------
+dailyCalc() =>
+    ret  = close / close[1] - 1
+    more = volume > volume[1]
+    dd   = ret <= -ddDropPct / 100 and more
+    acc  = ret >= ddDropPct / 100 and more
+    dd25 = math.sum(dd ? 1 : 0, ddWindow)
+    rng  = high - low
+    mfm  = rng > 0 ? ((close - low) - (high - close)) / rng : 0.0
+    cmf  = math.sum(mfm * volume, cmfLen) / math.sum(volume, cmfLen)
+    obv  = ta.cum(math.sign(ta.change(close)) * volume)
+    [low, close, volume, ret, dd ? 1 : 0, acc ? 1 : 0, dd25, cmf, obv]
+
+[dLow, dClose, dVol, dRet, dDD, dAcc, dDD25, dCMF, dOBV] = request.security_lower_tf(syminfo.tickerid, "1D", dailyCalc())
+vixDaily = request.security_lower_tf(vixSym, "1D", close)
+
+n = array.size(dClose)
+// Choque de un día: si la última sesión de la semana cae ≥ shockPct, la semana se evalúa con la sesión anterior
+shock = n >= 2 and array.get(dRet, n - 1) <= -shockPct / 100
+idx   = n == 0 ? na : (shock ? n - 2 : n - 1)
+
+float evalClose = n > 0 ? array.get(dClose, idx) : close
+float dd25      = n > 0 ? array.get(dDD25, idx) : na
+float cmf       = n > 0 ? array.get(dCMF, idx) : na
+float obv       = n > 0 ? array.get(dOBV, idx) : na
+nv = array.size(vixDaily)
+float vix = nv == 0 ? na : array.get(vixDaily, shock and nv >= 2 ? nv - 2 : nv - 1)
+
+// Medias con los cierres semanales reales, sustituyendo el de esta semana si hubo choque
+smaF = ta.sma(close, smaFastLen) + (evalClose - close) / smaFastLen
+smaS = ta.sma(close, smaSlowLen) + (evalClose - close) / smaSlowLen
+obvDiv = evalClose > evalClose[obvWeeks] and obv < obv[obvWeeks]
+
+// ---------- Lectura del viernes ----------
+above      = evalClose > smaS
+trendUp    = above and smaF > smaS
+prevBelow  = evalClose[1] < smaS[1]
+prevCmfNeg = cmf[1] < 0
+vixHigh    = not na(vix) and vix > vixMax
+prevVixHi  = not na(vix[1]) and vix[1] > vixMax
+warns      = (dd25 >= ddReduce ? 1 : 0) + (cmf < 0 and prevCmfNeg ? 1 : 0) + (obvDiv ? 1 : 0) + (vixHigh and prevVixHi ? 1 : 0)
+aligned    = trendUp and dd25 <= ddAligned and cmf > 0 and not obvDiv and not vixHigh
+reduceSig  = not above or warns >= warnNeed
+exitSig    = not above and prevBelow and (dd25 >= ddReduce or cmf < 0 or smaF < smaS)
+valid      = not na(smaS) and not na(cmf) and not na(dd25) and not na(smaS[1])
+
+// ---------- Estado (exposición, intento de rebote y FTD) ----------
+var int   expo      = na
+var string mode     = "normal"
+var bool  rallyOn   = false
+var float rallyLow  = na
+var int   rallyDay  = 0
+var bool  rallyExp  = false
+var bool  ftdFound  = false
+var bool  ftdWeek   = false
+var float reboteLow = na
+var float lastC     = na
+var float lastV     = na
+
+// Recorre las sesiones de la semana para seguir el intento de rebote (solo con exposición 0%)
+if n > 0
+    for i = 0 to n - 1
+        lo = array.get(dLow, i)
+        c  = array.get(dClose, i)
+        v  = array.get(dVol, i)
+        if rallyOn and not na(lastC)
+            if lo < rallyLow
+                rallyLow := lo
+                rallyDay := 0
+                rallyExp := false
+                ftdFound := false
+                ftdWeek  := false
+            if not rallyExp and not ftdFound
+                if rallyDay == 0
+                    if c > lastC
+                        rallyDay := 1
+                else
+                    rallyDay += 1
+                    gain = c / lastC - 1
+                    if rallyDay >= ftdFirst and rallyDay <= ftdLast and gain >= ftdGain / 100 and v > lastV
+                        ftdFound := true
+                        ftdWeek  := true
+                    else if rallyDay >= ftdLast
+                        rallyExp := true
+        lastC := c
+        lastV := v
+
+prevExpo = expo
+string why = ""
+if valid and barstate.isconfirmed
+    if na(expo)
+        expo := aligned ? 100 : trendUp ? 50 : 0
+    else
+        ftdOk = ftdWeek and ftdFound and evalClose > rallyLow
+        newExpo = expo
+        newMode = mode
+        if expo == 100
+            if exitSig
+                newExpo := 0, newMode := "normal", why := "Salida: 2º cierre bajo SMA lenta confirmado"
+            else if reduceSig
+                newExpo := 50, newMode := "normal", why := not above ? "Reducir: cierre bajo SMA lenta" : "Reducir: avisos de flujo/macro"
+        else if expo == 50 and mode == "rebote"
+            if not na(reboteLow) and evalClose < reboteLow
+                newExpo := 0, newMode := "normal", why := "FTD fallido: pierde el mínimo del intento"
+            else if aligned
+                newExpo := 100, newMode := "normal", why := "Tendencia y flujo alineados"
+            else
+                newMode := above ? "normal" : "rebote"
+        else if expo == 50
+            if exitSig
+                newExpo := 0, newMode := "normal", why := "Salida: 2º cierre bajo SMA lenta confirmado"
+            else if aligned
+                newExpo := 100, newMode := "normal", why := "Tendencia y flujo alineados"
+        else
+            if aligned
+                newExpo := 100, newMode := "normal", why := "Tendencia y flujo alineados"
+            else if ftdOk
+                newExpo := 50, newMode := "rebote", why := "Follow-Through Day"
+            else if trendUp
+                newExpo := 50, newMode := "normal", why := "Tendencia semanal recuperada"
+        if newExpo == 50 and newMode == "rebote" and expo == 0
+            reboteLow := rallyLow
+        else if newMode == "normal"
+            reboteLow := na
+        expo := newExpo
+        mode := newMode
+    ftdWeek := false
+    if expo == 0 and not rallyOn
+        rallyOn  := true
+        rallyLow := n > 0 ? array.get(dLow, n - 1) : low
+        rallyDay := 0
+        rallyExp := false
+        ftdFound := false
+    else if expo != 0
+        rallyOn := false
+
+// ---------- Dibujo ----------
+plot(smaF, "SMA rápida", color=color.new(#9a7bd8, 0), linewidth=1, style=plot.style_linebr)
+plot(smaS, "SMA lenta", color=color.new(#d95926, 0), linewidth=2)
+bgcolor(expo == 100 ? color.new(color.green, 85) : expo == 50 ? color.new(color.orange, 88) : expo == 0 ? color.new(color.red, 92) : na)
+
+up   = not na(prevExpo) and expo > prevExpo
+down = not na(prevExpo) and expo < prevExpo
+if up
+    label.new(bar_index, low, str.tostring(prevExpo) + "%→" + str.tostring(expo) + "%\n" + why, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+if down
+    label.new(bar_index, high, str.tostring(prevExpo) + "%→" + str.tostring(expo) + "%\n" + why, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+ddWeek  = n > 0 ? array.sum(dDD) : 0
+accWeek = n > 0 ? array.sum(dAcc) : 0
+plotchar(showFlow and ddWeek >= 2, "Semana con distribución", "D", location.abovebar, color.red, size=size.tiny)
+plotchar(showFlow and accWeek >= 2, "Semana con acumulación", "A", location.belowbar, color.green, size=size.tiny)
+plotshape(shock, "Choque de un día (evaluado con el jueves)", shape.xcross, location.abovebar, color.orange, size=size.tiny)
+
+// Checklist del viernes
+var table t = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 20), border_width=1)
+if barstate.islast
+    table.cell(t, 0, 0, "Exposición", text_color=color.white)
+    table.cell(t, 1, 0, na(expo) ? "—" : str.tostring(expo) + "%" + (mode == "rebote" ? " (rebote)" : ""), text_color=color.white)
+    table.cell(t, 0, 1, "1 Cierre / SMA lenta", text_color=color.white)
+    table.cell(t, 1, 1, str.tostring(evalClose, "#.##") + " / " + str.tostring(smaS, "#.##"), text_color=above ? color.lime : color.red)
+    table.cell(t, 0, 2, "  SMA rápida > lenta", text_color=color.white)
+    table.cell(t, 1, 2, smaF > smaS ? "Sí" : "No", text_color=smaF > smaS ? color.lime : color.red)
+    table.cell(t, 0, 3, "2 Días distribución (" + str.tostring(ddWindow) + ")", text_color=color.white)
+    table.cell(t, 1, 3, str.tostring(dd25), text_color=dd25 <= ddAligned ? color.lime : dd25 >= ddReduce ? color.red : color.orange)
+    table.cell(t, 0, 4, "3 CMF" + str.tostring(cmfLen), text_color=color.white)
+    table.cell(t, 1, 4, str.tostring(cmf, "#.###"), text_color=cmf > 0 ? color.lime : color.red)
+    table.cell(t, 0, 5, "4 Divergencia OBV", text_color=color.white)
+    table.cell(t, 1, 5, obvDiv ? "Sí" : "No", text_color=obvDiv ? color.red : color.lime)
+    table.cell(t, 0, 6, "5 VIX", text_color=color.white)
+    table.cell(t, 1, 6, na(vix) ? "—" : str.tostring(vix, "#.##"), text_color=vixHigh ? color.red : color.lime)
+
+// ---------- Alertas (crear con «Una vez por cierre de barra») ----------
+alertcondition(up, "Subir exposición", "S&P 500 régimen: SUBIR exposición (traspaso monetario → fondo S&P 500)")
+alertcondition(down and expo == 50, "Reducir al 50%", "S&P 500 régimen: REDUCIR al 50% (traspaso parcial al monetario)")
+alertcondition(down and expo == 0, "Salir al 0%", "S&P 500 régimen: SALIR al 0% (traspaso total al monetario)")

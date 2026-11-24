@@ -196,6 +196,10 @@
   .tc-in { fill: var(--pos); stroke: var(--panel); stroke-width: 2; }
   .tc-out { fill: var(--neg); stroke: var(--panel); stroke-width: 2; }
   .tc-win { fill: var(--pos); } .tc-loss { fill: var(--neg); }
+  .rc-fast { fill: none; stroke: #9a7bd8; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .rc-exp50 { fill: var(--pos-soft); opacity: .45; } .rc-exp100 { fill: var(--pos-soft); }
+  .exp-0 { color: var(--neg); } .exp-50 { color: var(--warn); } .exp-100 { color: var(--pos); }
+  .chk-ok::before { background: var(--pos); } .chk-aviso::before { background: var(--warn); } .chk-alerta::before { background: var(--neg); } .chk-na::before { background: var(--faint); }
   .tc-hit { fill: transparent; } .tc-hit:hover { fill: var(--hit); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font: .74rem var(--mono); color: var(--muted); margin: 8px 0 4px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -261,7 +265,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="index.html" style="color:var(--text)"><span class="brand-mark"></span>Análisis de mercado</a>
-    <nav class="nav site-nav"><a href="index.html">Mercado</a><a href="oro.html" class="active" aria-current="page">Oro</a></nav>
+    <nav class="nav site-nav"><a href="index.html">Mercado</a><a href="sp500.html">S&amp;P 500</a><a href="oro.html" class="active" aria-current="page">Oro</a></nav>
   </div>
 </header>
 <main>
@@ -500,7 +504,7 @@
       <tr><th>Regla que genera la señal</th><td>Filtro: cierre &gt; SMA200. Entrada: cierre &gt; máximo de las 20 sesiones previas. Stop inicial: entrada − 2×ATR20. Salida: cierre ≤ stop o cierre &lt; mínimo de las 10 sesiones previas. Señales al cierre; ejecución en la apertura siguiente.</td></tr>
       <tr><th>Datos utilizados</th><td class="small">PPFB.DE · yfinance · velas diarias OHLC ajustadas · 2021-07-16 → 2026-11-23 (1365 sesiones)</td></tr>
       <tr><th>Huella de los datos (SHA-256)</th><td class="mono small" style="word-break:break-all">27594084ea6e64b49e50e04d3f976d70513233fe9b2f0d004ce9e3e973d67a5a</td></tr>
-      <tr><th>Fecha de generación</th><td class="mono small">2026-11-23T23:46:06+01:00</td></tr>
+      <tr><th>Fecha de generación</th><td class="mono small">2026-11-24T11:23:19+01:00</td></tr>
     </table>
   </details>
   <p class="small faint" style="margin:10px 0 0">Experimental y teórica: la posición se reconstruye aplicando las reglas al histórico, no refleja tu cartera real. No ejecuta órdenes ni es asesoramiento financiero.</p>
@@ -682,7 +686,7 @@
 </div>
 <details class="panel" style="margin-top:12px"><summary>Cómo se calcula y limitaciones</summary>
   <ul class="small"><li>Cada fin de mes se mira si el factor subió o bajó en los 3 meses anteriores y qué hizo el oro en EUR el mes y el trimestre siguientes. Las variaciones muy pequeñas (banda plana) no cuentan en ningún régimen.</li><li>«Favorece» o «perjudica» compara la rentabilidad media a 3 meses del régimen actual con la del contrario. Hace falta una diferencia de al menos 1 pp, 24 meses en cada régimen y una solidez |t| ≥ 1.5; si no, «sin efecto claro».</li><li>La solidez (t) divide la diferencia de medias por su error estándar contando un tercio de los meses, porque las ventanas de 3 meses se solapan. |t| &lt; 1,5: puede ser ruido; 1,5-2: indicio; &gt; 2: diferencia consistente.</li><li>La correlación usa variaciones semanales de las últimas 52 semanas (no se calcula en datos mensuales).</li><li>Es estadística descriptiva del pasado, no una relación causal ni una previsión. No altera las señales de la estrategia.</li></ul>
-  <p class="small faint" style="margin:0">Precio del oro: Oro en EUR (futuro COMEX GC=F ÷ EUR/USD), equivalente a PPFB.DE. Generado 2026-11-23T23:46:06.</p>
+  <p class="small faint" style="margin:0">Precio del oro: Oro en EUR (futuro COMEX GC=F ÷ EUR/USD), equivalente a PPFB.DE. Generado 2026-11-24T11:23:19.</p>
 </details>
 
 <div class="panel disclaimer" style="margin-top:24px">
@@ -691,7 +695,7 @@
   tolerancia al riesgo de nadie. Los datos pueden contener errores o retrasos y los análisis de IA pueden equivocarse.
   Las rentabilidades pasadas no garantizan rentabilidades futuras.
 </div>
-<footer>Generado 2026-11-23T23:46:06 · análisis 20261121-182309-847ff2-semanal · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
+<footer>Generado 2026-11-24T11:23:19 · análisis 20261121-182309-847ff2-semanal · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
 </main>
 </body>
 </html>

@@ -64,7 +64,7 @@ def make_env(templates_dir: Path) -> Environment:
         trend_state=lambda v: TREND_STATE_LABELS.get(v, v or "—"),
     )
     env.globals.update(gauge=charts.gauge, sparkline=charts.sparkline, score_ring=charts.score_ring, fg_label=charts.fear_greed_label,
-                       trend_chart=charts.trend_chart, r_bars=charts.r_bars)
+                       trend_chart=charts.trend_chart, r_bars=charts.r_bars, regime_chart=charts.regime_chart)
     return env
 
 

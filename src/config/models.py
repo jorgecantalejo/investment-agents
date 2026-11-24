@@ -162,6 +162,50 @@ class TrendStrategyConfig(_Strict):
         return self
 
 
+class RegimeStrategyConfig(_Strict):
+    """Estrategia de régimen semanal y flujo institucional (S&P 500): exposición 0/50/100% entre un fondo indexado y un monetario.
+
+    Señales sobre velas diarias con volumen de `ticker` (SPY), decididas solo al cierre semanal. Ver src/quant/regime.py.
+    """
+
+    name: str
+    ticker: str = "SPY"
+    vix_ticker: str | None = "^VIX"
+    asset_id: str | None = Field(None, description="Activo al que acompaña (página de la web)")
+    vehicle: str = Field("Fondo indexado S&P 500 ↔ fondo monetario EUR (traspasos)", description="Cómo se ejecuta")
+    history_period: str = "max"
+    sma_fast: int = Field(10, ge=2, description="Media rápida en semanas")
+    sma_slow: int = Field(40, ge=10, description="Media lenta en semanas (filtro principal)")
+    dd_window: int = Field(25, ge=5, description="Ventana de sesiones para contar días de distribución")
+    dd_drop_pct: float = Field(0.2, gt=0, description="Caída mínima (%) de un día de distribución")
+    dd_reduce: int = Field(7, ge=1, description="Días de distribución en la ventana que cuentan como aviso")
+    dd_aligned_max: int = Field(5, ge=0, description="Máximo de días de distribución para considerar el flujo alineado")
+    cmf_window: int = Field(20, ge=5)
+    obv_weeks: int = Field(10, ge=2, description="Divergencia OBV: precio sube y OBV baja frente a hace N semanas")
+    vix_max: float = Field(25.0, gt=0, description="VIX semanal por encima = tensión macro")
+    warnings_to_reduce: int = Field(2, ge=1, description="Avisos de flujo/macro simultáneos que bajan del 100% al 50%")
+    ftd_gain_pct: float = Field(1.25, gt=0)
+    ftd_first_day: int = Field(4, ge=2)
+    ftd_last_day: int = Field(7, ge=2)
+    shock_day_pct: float = Field(4.0, gt=0, description="Caída de la última sesión de la semana que se considera choque aislado")
+    execution_lag: int = Field(2, ge=0, description="Sesiones entre la decisión del viernes y la ejecución del traspaso (backtest)")
+    cash_rate_pct: float = Field(0.0, ge=0, description="Rentabilidad anual supuesta del monetario en el backtest")
+    exchange_tz: str = "America/New_York"
+    session_close: str = Field("16:30", pattern=r"^\d{2}:\d{2}$", description="Antes de esta hora la vela del día se descarta por incompleta")
+    chart_weeks: int = Field(156, ge=40)
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _check(self) -> RegimeStrategyConfig:
+        if self.sma_fast >= self.sma_slow:
+            raise ValueError("sma_fast debe ser menor que sma_slow")
+        if self.dd_aligned_max >= self.dd_reduce:
+            raise ValueError("dd_aligned_max debe ser menor que dd_reduce")
+        if not self.ftd_first_day <= self.ftd_last_day:
+            raise ValueError("ftd_first_day debe ser ≤ ftd_last_day")
+        return self
+
+
 class ProfileConfig(_Strict):
     """Informe con nombre sobre un subconjunto de activos. Varios perfiles comparten datos, búsquedas y análisis."""
 
@@ -180,6 +224,7 @@ class AppConfig(_Strict):
     assets: list[AssetConfig] = Field(min_length=1)
     profiles: dict[str, ProfileConfig] = Field(default_factory=dict)
     strategies: dict[str, TrendStrategyConfig] = Field(default_factory=dict)
+    regime_strategies: dict[str, RegimeStrategyConfig] = Field(default_factory=dict)
 
     @field_validator("assets")
     @classmethod
@@ -210,6 +255,11 @@ class AppConfig(_Strict):
                 raise ValueError(f"la estrategia {name!r} usa un activo desconocido: {strategy.asset_id!r}")
             if strategy.currency != self.report.currency:
                 raise ValueError(f"la estrategia {name!r} cotiza en {strategy.currency}; debe coincidir con report.currency ({self.report.currency})")
+        for name, regime in self.regime_strategies.items():
+            if name in self.strategies or not re.fullmatch(r"[a-z0-9_]+", name):
+                raise ValueError(f"nombre de estrategia de régimen no válido o repetido: {name!r}")
+            if regime.asset_id and regime.asset_id not in known:
+                raise ValueError(f"la estrategia {name!r} usa un activo desconocido: {regime.asset_id!r}")
         return self
 
     def strategies_for(self, asset_ids: list[str] | None) -> dict[str, TrendStrategyConfig]:

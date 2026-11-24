@@ -223,3 +223,70 @@ def r_bars(trades, title: str) -> Markup:
                    f'<title>{t.entry_date} → {t.exit_date}: {r:+.2f} R ({t.return_pct:+.2f}%)</title></rect>')
     out.append(f'<line x1="{left}" x2="{width - right}" y1="{y(0):.1f}" y2="{y(0):.1f}" class="tc-zero"/></svg>')
     return Markup("".join(out))
+
+
+def regime_chart(chart, switches, title: str) -> Markup:
+    """Cierre semanal con SMA rápida y lenta, fondo según la exposición decidida (0/50/100%) y marcas en cada traspaso."""
+    n = len(chart.dates)
+    if n < 2:
+        return Markup('<div class="spark-empty">sin histórico</div>')
+    width, height, left, right, top, bottom = 900, 320, 8, 64, 12, 26
+    values = [v for series in (chart.close, chart.sma_fast, chart.sma_slow) for v in series if v is not None]
+    lo, hi = min(values), max(values)
+    pad = (hi - lo) * 0.04 or 1.0
+    lo, hi = lo - pad, hi + pad
+    y = _scale(lo, hi, top, height - bottom)
+    step = (width - left - right) / (n - 1)
+    xs = [left + i * step for i in range(n)]
+    plot_right = width - right
+
+    out = [f'<svg class="tchart" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title)}"><title>{escape(title)}</title>']
+    # Fondo: una franja por semana con la exposición vigente tras esa decisión
+    for i, e in enumerate(chart.exposure):
+        if e:
+            out.append(f'<rect x="{xs[i] - step / 2:.1f}" y="{top}" width="{step + 0.5:.2f}" height="{height - top - bottom}" class="rc-exp{e}"/>')
+    for t in _nice_ticks(lo, hi):
+        out.append(f'<line x1="{left}" x2="{plot_right}" y1="{y(t):.1f}" y2="{y(t):.1f}" class="tc-grid"/>'
+                   f'<text x="{plot_right + 6}" y="{y(t) + 4:.1f}" class="tc-axis">{t:,.0f}</text>')
+    quarter = None
+    for i, d in enumerate(chart.dates):
+        q = (d[:4], (int(d[5:7]) - 1) // 3)
+        if q != quarter:
+            quarter = q
+            if 0 < i < n - 6:
+                out.append(f'<line x1="{xs[i]:.1f}" x2="{xs[i]:.1f}" y1="{height - bottom}" y2="{height - bottom + 4}" class="tc-tick"/>'
+                           f'<text x="{xs[i]:.1f}" y="{height - 8}" text-anchor="middle" class="tc-axis">{d[5:7]}/{d[2:4]}</text>')
+    out.append(f'<path d="{_path(xs, chart.sma_slow, y)}" class="tc-sma"/>')
+    out.append(f'<path d="{_path(xs, chart.sma_fast, y)}" class="rc-fast"/>')
+    out.append(f'<path d="{_path(xs, chart.close, y)}" class="tc-close"/>')
+
+    index = {d: i for i, d in enumerate(chart.dates)}
+    for s in switches:
+        if s.date not in index:
+            continue
+        i = index[s.date]
+        px = xs[i]
+        tip = f"{s.date}: {s.from_pct}% → {s.to_pct}% · {'; '.join(s.reasons)}"
+        if s.to_pct > s.from_pct:
+            py = y(chart.close[i]) + 12
+            out.append(f'<path d="M{px:.1f},{py - 6:.1f} L{px + 6:.1f},{py + 5:.1f} L{px - 6:.1f},{py + 5:.1f} Z" class="tc-in"><title>{escape(tip)}</title></path>')
+        else:
+            py = y(chart.close[i]) - 12
+            out.append(f'<path d="M{px:.1f},{py + 6:.1f} L{px + 6:.1f},{py - 5:.1f} L{px - 6:.1f},{py - 5:.1f} Z" class="tc-out"><title>{escape(tip)}</title></path>')
+
+    for value, cls in ((chart.sma_slow[-1], "tc-dot-sma"), (chart.close[-1], "tc-dot")):
+        if value is not None:
+            out.append(f'<circle cx="{xs[-1]:.1f}" cy="{y(value):.1f}" r="4" class="{cls}"/>')
+    for i, d in enumerate(chart.dates):
+        bits = [f"Semana {d}", f"Cierre {chart.close[i]:,.2f}"]
+        for lbl, series in (("SMA rápida", chart.sma_fast), ("SMA lenta", chart.sma_slow)):
+            if series[i] is not None:
+                bits.append(f"{lbl} {series[i]:,.2f}")
+        if chart.dd25[i] is not None:
+            bits.append(f"Días de distribución {chart.dd25[i]}")
+        if chart.exposure[i] is not None:
+            bits.append(f"Exposición {chart.exposure[i]}%")
+        out.append(f'<rect x="{xs[i] - step / 2:.1f}" y="{top}" width="{max(step, 1):.2f}" height="{height - top - bottom}" class="tc-hit">'
+                   f'<title>{" · ".join(bits)}</title></rect>')
+    out.append("</svg>")
+    return Markup("".join(out))

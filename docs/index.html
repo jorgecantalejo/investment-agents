@@ -196,6 +196,10 @@
   .tc-in { fill: var(--pos); stroke: var(--panel); stroke-width: 2; }
   .tc-out { fill: var(--neg); stroke: var(--panel); stroke-width: 2; }
   .tc-win { fill: var(--pos); } .tc-loss { fill: var(--neg); }
+  .rc-fast { fill: none; stroke: #9a7bd8; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .rc-exp50 { fill: var(--pos-soft); opacity: .45; } .rc-exp100 { fill: var(--pos-soft); }
+  .exp-0 { color: var(--neg); } .exp-50 { color: var(--warn); } .exp-100 { color: var(--pos); }
+  .chk-ok::before { background: var(--pos); } .chk-aviso::before { background: var(--warn); } .chk-alerta::before { background: var(--neg); } .chk-na::before { background: var(--faint); }
   .tc-hit { fill: transparent; } .tc-hit:hover { fill: var(--hit); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font: .74rem var(--mono); color: var(--muted); margin: 8px 0 4px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -261,7 +265,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="index.html" style="color:var(--text)"><span class="brand-mark"></span>Análisis de mercado</a>
-    <nav class="nav site-nav"><a href="index.html" class="active" aria-current="page">Mercado</a><a href="oro.html">Oro</a></nav>
+    <nav class="nav site-nav"><a href="index.html" class="active" aria-current="page">Mercado</a><a href="sp500.html">S&amp;P 500</a><a href="oro.html">Oro</a></nav>
   </div>
 </header>
 <main>
@@ -507,7 +511,7 @@
 <span class="pill act-no_extra">Esperar</span>        <span class="chg down" title="Respecto al análisis del 2026-11-17">5→4</span>
       </div>
   </div>
-  <div class="tile static">
+  <a class="tile" href="sp500.html">
     <div class="tile-head">
       <div><div class="tile-name">S&amp;P 500</div><div class="ticker">^GSPC · equity</div></div>
       <svg class="ring ring-mid" viewBox="0 0 48 48" role="img" aria-label="Puntuación 4 de 10"><title>Puntuación 4/10</title><circle cx="24" cy="24" r="20" class="ring-track"/><circle cx="24" cy="24" r="20" class="ring-fill" stroke-dasharray="50.3 125.7" transform="rotate(-90 24 24)"/><text x="24" y="29" text-anchor="middle" class="ring-text">4</text></svg>
@@ -519,8 +523,8 @@
       <div class="tile-foot">
         <span class="pill trend-sideways">Lateral</span>
 <span class="pill act-no_extra">Esperar</span>        <span class="chg down" title="Respecto al análisis del 2026-11-17">5→4</span>
-      </div>
-  </div>
+<span class="tile-link">Ver análisis →</span>      </div>
+  </a>
   <div class="tile static">
     <div class="tile-head">
       <div><div class="tile-name">Nasdaq 100</div><div class="ticker">^NDX · equity</div></div>
@@ -599,6 +603,12 @@
 <div class="small mono">Factores macro: <b class="pos">0</b> favorecen · <b class="neg">1</b> perjudican · 9 sin efecto claro</div>  <span class="tile-link">Ver estrategia →</span>
 </a>
 
+<a class="panel strategy-tile" href="sp500.html#estrategia" style="margin-top:12px; color:var(--text)">
+  <div><div class="label">S&amp;P 500 · régimen semanal y flujo</div><div class="state"><span class="pill st-sin_posicion">50% invertido</span></div></div>
+  <div class="small muted" style="flex:1; min-width:220px">Decisión del viernes 2026-11-20: mantener 50% en el fondo S&amp;P 500 y 50% en el monetario. No hay que hacer ningún traspaso. <b>Provisional: 0%.</b></div>
+  <span class="tile-link">Ver estrategia →</span>
+</a>
+
 <div class="section-head" id="eventos"><div><div class="eyebrow">Calendario</div><h2>Próximos eventos relevantes</h2></div></div>
 <div class="panel">
     <div class="event">
@@ -643,7 +653,7 @@
       <td><span class="pill act-no_extra">Esperar</span></td>
     </tr>
     <tr>
-      <td><b>S&amp;P 500</b><br><span class="small faint mono">^GSPC</span></td>
+      <td><a href="sp500.html"><b>S&amp;P 500</b></a><br><span class="small faint mono">^GSPC</span></td>
       <td class="num">6 910.39 <span class="faint">USD</span></td>
 <td class="num"><span class="neg">-8.39%</span></td><td class="num"><span class="neg">-3.76%</span></td><td class="num"><span class="neg">-1.63%</span></td><td class="num"><span class="pos">+11.18%</span></td>      <td class="mono" style="white-space:nowrap">No / No</td>
       <td>Lateral</td>
@@ -718,7 +728,7 @@
   tolerancia al riesgo de nadie. Los datos pueden contener errores o retrasos y los análisis de IA pueden equivocarse.
   Las rentabilidades pasadas no garantizan rentabilidades futuras.
 </div>
-<footer>Generado 2026-11-23T23:46:06 · análisis 20261121-182309-847ff2-semanal · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
+<footer>Generado 2026-11-24T11:23:19 · análisis 20261121-182309-847ff2-semanal · datos: Yahoo Finance, FRED, CNN, alternative.me, multpl.com</footer>
 </main>
 </body>
 </html>

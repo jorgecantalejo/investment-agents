@@ -94,24 +94,31 @@ class MarketDataService:
 
     def get_ohlc(self, ticker: str, period: str | None = None) -> OhlcResult:
         """Velas diarias de `ticker`, con la misma caché y fallback a caché caducada que `get_close`."""
+        return self._get_frame(ticker, period, "ohlc", "get_ohlc_history")
+
+    def get_ohlcv(self, ticker: str, period: str | None = None) -> OhlcResult:
+        """Velas diarias con volumen (columna `volume`)."""
+        return self._get_frame(ticker, period, "ohlcv", "get_ohlcv_history")
+
+    def _get_frame(self, ticker: str, period: str | None, kind: str, method: str) -> OhlcResult:
         period = period or self.period
-        if not hasattr(self.prices, "get_ohlc_history"):
-            raise MarketDataError(f"El proveedor {self.prices.name} no ofrece OHLC")
-        key = f"ohlc:{self.prices.name}:{ticker}:{period}"
+        if not hasattr(self.prices, method):
+            raise MarketDataError(f"El proveedor {self.prices.name} no ofrece {kind.upper()}")
+        key = f"{kind}:{self.prices.name}:{ticker}:{period}"
         cached = self.price_cache.get(key)
         if cached:
-            logger.debug("OHLC de %s desde caché", ticker)
+            logger.debug("%s de %s desde caché", kind.upper(), ticker)
             return OhlcResult(_frame_from_json(cached))
         try:
-            ohlc = self.prices.get_ohlc_history(ticker, period)
+            ohlc = getattr(self.prices, method)(ticker, period)
         except MarketDataError:
             stale = self.price_cache.get(key, allow_stale=True)
             if not stale:
                 raise
-            logger.warning("Proveedor no disponible para %s: usando OHLC de caché caducada", ticker)
+            logger.warning("Proveedor no disponible para %s: usando %s de caché caducada", ticker, kind.upper())
             return OhlcResult(_frame_from_json(stale), from_stale_cache=True)
         self.price_cache.set(key, _frame_to_json(ohlc))
-        logger.info("OHLC de %s descargado (%d sesiones)", ticker, len(ohlc))
+        logger.info("%s de %s descargado (%d sesiones)", kind.upper(), ticker, len(ohlc))
         return OhlcResult(ohlc)
 
     def get_close_in_currency(self, ticker: str, ticker_ccy: str, target_ccy: str) -> PriceResult:

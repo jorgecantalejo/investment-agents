@@ -124,7 +124,7 @@ Ejecutar solo partes concretas:
 | `--handoff-status DIR` | Estado de una carpeta handoff en JSON (pendientes, inválidas, informes generados) |
 | `--profiles a,b` / `--list-profiles` | Informes por perfil / listar perfiles |
 | `--strategy gold_trend` (o `all`) | Solo las estrategias de tendencia: informe propio, sin LLM ni web (ver abajo) |
-| `--site [DIR]` | Web pública en `docs/` (o DIR): último análisis + estrategia y factores del oro recalculados, sin importes |
+| `--site [DIR]` | Web pública en `docs/` (o DIR): último análisis + estrategias (oro, S&P 500) y factores del oro recalculados, sin importes |
 | `--no-cache` | Ignora la caché local |
 | `--history [N]` | Muestra las últimas N decisiones guardadas |
 | `--list-assets` / `--validate-config` | Utilidades de configuración |
@@ -166,6 +166,14 @@ La skill del proyecto (`.claude/skills/analisis/SKILL.md`) automatiza todo el ci
 Crea `data/handoff/<fecha>_<perfiles>/`, ejecuta el pipeline, lanza en paralelo un subagente por petición pendiente
 (macro → activos → un supervisor por perfil), comprueba cada respuesta con `--handoff-status`, repite hasta generar
 los informes y muestra el resumen.
+
+## Estrategia experimental: S&P 500, régimen semanal y flujo institucional
+
+Exposición 0/50/100% entre un fondo indexado al S&P 500 y un monetario en EUR, decidida solo con el cierre semanal de SPY:
+medias de 10 y 40 semanas, días de distribución (25 sesiones), CMF20, divergencia OBV, VIX y Follow-Through Day para
+reentrar. Configuración en `regime_strategies.sp500_regime`; reglas, checklist del viernes, protocolo ante un desplome de
+un día, resultados y limitaciones en [`estrategias/sp500_regimen.md`](estrategias/sp500_regimen.md); indicador de
+TradingView en `estrategias/sp500_regimen.pine`. Se calcula al generar la web (`--site`).
 
 ## Estrategia experimental: oro, seguimiento de tendencia
 
@@ -245,7 +253,7 @@ Acciones posibles: `no_extra` (esperar), `small_extra` (entrada pequeña), `norm
 ## Web pública (GitHub Pages)
 
 ```bash
-python -m src.main --site          # genera docs/index.html y docs/oro.html
+python -m src.main --site          # genera docs/index.html, docs/sp500.html y docs/oro.html
 scripts/publish_site.sh            # genera y publica (commit + push solo de docs/)
 ```
 
@@ -254,6 +262,8 @@ Sin histórico: cada generación sobrescribe las mismas URLs y borra de `docs/` 
 - **Portada** (`index.html`): régimen macro, indicadores, datos de FRED, resumen de la semana, tarjetas de los activos con
   la marca de cambio respecto al análisis completo anterior (p. ej. «4→6», «esperar→entrada pequeña»), eventos,
   comparativa y fuentes. Sale del último análisis completo guardado en `data/runs/` (con macro y analistas).
+- **S&P 500** (`sp500.html`): 1) análisis semanal; 2) estrategia de régimen semanal y flujo (exposición 0/50/100%);
+  3) checklist del viernes; 4) histórico de traspasos y comparativa; 5) reglas. Ver `estrategias/sp500_regimen.md`.
 - **Oro** (`oro.html`): 1) datos e indicadores del análisis semanal; 2) estrategia de tendencia; 3) factores macro.
   La estrategia y los factores se **recalculan cada vez** que se genera la web, así que se pueden publicar a diario sin LLM.
 - **Sin importes**: la web es pública y no muestra capital, presupuestos, importes ni participaciones. La estrategia
@@ -311,7 +321,8 @@ src/
   config/                esquema Pydantic y carga del YAML
   core/                  errores, reintentos, caché, logging
   market/                datos de mercado (providers/ + servicio con caché y FX)
-  quant/                 métricas puras, snapshot y estrategia de tendencia (trend.py, trend_snapshot.py)
+  quant/                 métricas puras, snapshot, estrategia de tendencia (trend.py, trend_snapshot.py)
+                         y régimen semanal del S&P 500 (regime.py, regime_snapshot.py)
   research/              búsqueda web (providers/ + servicio con presupuesto y fuentes)
   analysis/              esquemas de salida, prompts y runners LLM (Anthropic y OpenAI Agents SDK)
   synthesis/             guardrails, importes, contradicciones, datos faltantes

@@ -29,10 +29,11 @@ from src.models import RunRecord
 from src.core.cache import FileCache
 from src.pipeline import Pipeline, RunOptions, build_market_service
 from src.quant.gold_factors import build_factor_study
+from src.quant.regime_snapshot import build_regime_strategy
 from src.quant.trend_snapshot import build_trend_strategy
 from src.reporting.builder import ACTION_LABELS, TREND_STATE_LABELS
 from src.reporting.html import write_report, write_strategy_report
-from src.reporting.site import GOLD_ASSET_ID, build_site
+from src.reporting.site import GOLD_ASSET_ID, SP500_ASSET_ID, build_site
 from src.settings import PROJECT_ROOT, Settings, load_settings
 from src.storage.run_store import RunStore
 
@@ -131,21 +132,27 @@ def run_strategies(args: argparse.Namespace, config: AppConfig, settings: Settin
     return EXIT_DEGRADED if all(r.error for r in results) else EXIT_OK
 
 def run_site(args: argparse.Namespace, config: AppConfig, settings: Settings) -> int:
-    """Genera la web: sin LLM ni búsquedas. Recalcula la estrategia y los factores del oro (pensado para ejecutarse a diario)."""
+    """Genera la web: sin LLM ni búsquedas. Recalcula las estrategias (oro, S&P 500) y los factores del oro (pensado para ejecutarse a diario)."""
     service = build_market_service(config, settings, use_cache=not args.no_cache)
     gold = next((n for n, s in config.strategies.items() if s.asset_id == GOLD_ASSET_ID and s.enabled), None)
     strategy = build_trend_strategy(gold, config.strategies[gold], service) if gold else None
     macro_cache = FileCache(settings.cache_dir / "macro", config.data.macro_cache_ttl_hours, enabled=not args.no_cache) \
         if config.data.macro_data else None
     factors = build_factor_study(service, macro_cache)
+    sp500 = next((n for n, s in config.regime_strategies.items() if s.asset_id == SP500_ASSET_ID and s.enabled), None)
+    regime = build_regime_strategy(sp500, config.regime_strategies[sp500], service) if sp500 else None
     try:
-        paths = build_site(settings.runs_dir, settings.templates_dir, args.site, strategy, factors)
+        paths = build_site(settings.runs_dir, settings.templates_dir, args.site, strategy, factors, sp500_regime=regime)
     except ReportError as exc:
         logger.error("%s", exc)
         return EXIT_REPORT
     print("Web generada: " + ", ".join(str(p) for p in paths))
     if strategy:
         print(f"Oro · tendencia: {TREND_STATE_LABELS[strategy.state]}{f' ({strategy.error})' if strategy.error else ''}")
+    if regime:
+        detail = regime.error or f"{regime.exposure}% (viernes {regime.decision_date}){' · TRASPASO' if regime.changed else ''}" + \
+            ("" if regime.week_complete else f" · provisional {regime.provisional_exposure}%")
+        print(f"S&P 500 · régimen: {detail}")
     if not factors.error:
         print(f"Oro · factores: {factors.favorable} favorecen, {factors.unfavorable} perjudican, {factors.neutral} sin efecto claro")
     return EXIT_OK

@@ -186,6 +186,10 @@
   .tc-in { fill: var(--pos); stroke: var(--panel); stroke-width: 2; }
   .tc-out { fill: var(--neg); stroke: var(--panel); stroke-width: 2; }
   .tc-win { fill: var(--pos); } .tc-loss { fill: var(--neg); }
+  .rc-fast { fill: none; stroke: #9a7bd8; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .rc-exp50 { fill: var(--pos-soft); opacity: .45; } .rc-exp100 { fill: var(--pos-soft); }
+  .exp-0 { color: var(--neg); } .exp-50 { color: var(--warn); } .exp-100 { color: var(--pos); }
+  .chk-ok::before { background: var(--pos); } .chk-aviso::before { background: var(--warn); } .chk-alerta::before { background: var(--neg); } .chk-na::before { background: var(--faint); }
   .tc-hit { fill: transparent; } .tc-hit:hover { fill: var(--hit); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font: .74rem var(--mono); color: var(--muted); margin: 8px 0 4px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
