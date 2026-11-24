@@ -9,9 +9,11 @@ Cada viernes, con C = cierre semanal y SMA40 = media de 40 cierres semanales:
                salvo semana estirada (caída semanal ≥ panic_week_drop_pct o RSI14 diario < panic_rsi): se aplaza una
                vez al viernes siguiente, que sale si sigue siendo bajista (aunque vuelva a estar estirada)
   3 ENTRADA    (al 0%)    C > SMA40 × (1 + enter_band_pct/100)                            → 100%
-Con 1 se cubren los desplomes rápidos (marzo de 2020), con 2 los mercados bajistas lentos (2000-02, 2008, 2022).
+  4 REENTRADA RÁPIDA (al 0% tras una salida de emergencia)  C > SMA10                       → 100%
+Con 1 se cubren los desplomes rápidos (marzo de 2020), con 2 los mercados bajistas lentos (2000-02, 2008, 2022). La 4 evita
+quedarse fuera de una caída en V hasta que el precio supere la SMA40: tras un pánico la SMA40 queda muy por encima.
 
-Solo contexto (no dan órdenes): SMA10 semanal, días de distribución (rentabilidad ≤ −dd_drop_pct con volumen mayor que la
+Solo contexto (no dan órdenes): días de distribución (rentabilidad ≤ −dd_drop_pct con volumen mayor que la
 sesión anterior, contados en `dd_window` sesiones), CMF y divergencia OBV.
 """
 
@@ -34,6 +36,7 @@ class RegimeParams:
     vix_emergency: float = 35.0
     panic_week_drop_pct: float = 3.5
     panic_rsi: float = 30.0
+    fast_reentry_after_emergency: bool = True
     rsi_window: int = 14
     dd_window: int = 25
     dd_drop_pct: float = 0.2
@@ -171,10 +174,10 @@ class Switch:
 
 @dataclass
 class RegimeReplay:
-    weekly: pd.DataFrame  # con las columnas exposure y deferred (decisión de cada semana completa evaluada)
+    weekly: pd.DataFrame  # con las columnas exposure y mode (decisión de cada semana completa evaluada)
     switches: list[Switch]
     exposure: int
-    deferred: bool  # hay una salida aplazada que se decide el próximo viernes
+    mode: str  # MODES: "aplazada" (al 100% con salida bajista pendiente), "emergencia" (al 0% tras una salida de emergencia)
     daily_exposure: pd.Series  # exposición efectiva de cada sesión (tras el retraso de ejecución), en tanto por uno
     first_valid: pd.Timestamp | None = None
     last_decision: pd.Timestamp | None = None
@@ -197,24 +200,29 @@ def readings_at(weekly: pd.DataFrame, i: int, p: RegimeParams) -> Readings | Non
     )
 
 
-def decide(exposure: int, deferred: bool, r: Readings, p: RegimeParams) -> tuple[int, bool, list[str]]:
-    """Exposición tras la lectura del viernes, si queda una salida aplazada y los motivos del cambio (vacío si no cambia)."""
-    slow = f"SMA{p.sma_slow}s"
+MODES = ("normal", "aplazada", "emergencia")
+
+
+def decide(exposure: int, mode: str, r: Readings, p: RegimeParams) -> tuple[int, str, list[str]]:
+    """Exposición y modo tras la lectura del viernes, con los motivos del cambio (vacío si no cambia)."""
+    slow, fast = f"SMA{p.sma_slow}s", f"SMA{p.sma_fast}s"
     if exposure == 100:
         if r.emergency(p):
-            return 0, False, [f"salida de emergencia: VIX {r.vix:.1f} > {p.vix_emergency:g} con el cierre {r.gap_pct:+.1f}% bajo la {slow}"]
-        if deferred:
+            return 0, "emergencia", [f"salida de emergencia: VIX {r.vix:.1f} > {p.vix_emergency:g} con el cierre {r.gap_pct:+.1f}% bajo la {slow}"]
+        if mode == "aplazada":
             if r.bear:
-                return 0, False, [f"salida aplazada confirmada: el cierre sigue {r.gap_pct:+.1f}% bajo la {slow} y la media baja"]
-            return 100, False, []
+                return 0, "normal", [f"salida aplazada confirmada: el cierre sigue {r.gap_pct:+.1f}% bajo la {slow} y la media baja"]
+            return 100, "normal", []
         if r.bear:
             if r.stretched(p):
-                return 100, True, []
-            return 0, False, [f"mercado bajista: cierre {r.gap_pct:+.1f}% bajo la {slow} y la media más baja que hace {p.slope_weeks} semanas"]
-        return 100, False, []
+                return 100, "aplazada", []
+            return 0, "normal", [f"mercado bajista: cierre {r.gap_pct:+.1f}% bajo la {slow} y la media más baja que hace {p.slope_weeks} semanas"]
+        return 100, "normal", []
     if r.close > r.enter_line(p):
-        return 100, False, [f"cierre {r.gap_pct:+.1f}% sobre la {slow}: supera la línea de entrada (+{p.enter_band_pct:g}%)"]
-    return 0, False, []
+        return 100, "normal", [f"cierre {r.gap_pct:+.1f}% sobre la {slow}: supera la línea de entrada (+{p.enter_band_pct:g}%)"]
+    if mode == "emergencia" and p.fast_reentry_after_emergency and r.close > r.sma_fast:
+        return 100, "normal", [f"reentrada rápida tras la emergencia: el cierre ({r.close:,.2f}) supera la {fast} ({r.sma_fast:,.2f})"]
+    return 0, mode, []
 
 
 def initial_exposure(r: Readings) -> int:
@@ -227,9 +235,9 @@ def replay(daily: pd.DataFrame, weekly: pd.DataFrame, p: RegimeParams) -> Regime
     La primera semana con la media lenta y su pendiente fija la exposición inicial sin contar como traspaso.
     """
     weekly = weekly.copy()
-    exposure, deferred = 0, False
+    exposure, mode = 0, "normal"
     switches: list[Switch] = []
-    decisions: dict[pd.Timestamp, tuple[int, bool]] = {}
+    decisions: dict[pd.Timestamp, tuple[int, str]] = {}
     first_valid = last_decision = None
     for i, ts in enumerate(weekly.index):
         if not weekly["complete"].iloc[i]:
@@ -240,18 +248,19 @@ def replay(daily: pd.DataFrame, weekly: pd.DataFrame, p: RegimeParams) -> Regime
         if first_valid is None:
             first_valid, exposure = ts, initial_exposure(r)
         else:
-            new_exposure, deferred, reasons = decide(exposure, deferred, r, p)
+            new_exposure, mode, reasons = decide(exposure, mode, r, p)
             if new_exposure != exposure:
                 switches.append(Switch(ts, exposure, new_exposure, reasons))
             exposure = new_exposure
-        decisions[ts] = (exposure, deferred)
+        decisions[ts] = (exposure, mode)
         last_decision = ts
 
     weekly["exposure"] = pd.Series({k: v[0] for k, v in decisions.items()}, dtype=float)
-    weekly["deferred"] = pd.Series({k: v[1] for k, v in decisions.items()}, dtype=object)
+    weekly["mode"] = pd.Series({k: v[1] for k, v in decisions.items()}, dtype=object)
     target = weekly["exposure"].reindex(daily.index).ffill()
     effective = target.shift(p.execution_lag).fillna(0.0) / 100
-    return RegimeReplay(weekly, switches, exposure, deferred, effective, first_valid, last_decision)
+    return RegimeReplay(weekly, switches, exposure, mode, effective, first_valid, last_decision)
+
 
 
 def sma_only_exposure(weekly: pd.DataFrame, daily_index: pd.DatetimeIndex, p: RegimeParams) -> pd.Series:

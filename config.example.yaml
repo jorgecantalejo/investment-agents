@@ -185,13 +185,14 @@ regime_strategies:
     ticker: "SPY"
     vix_ticker: "^VIX"              # sin VIX no hay salida de emergencia
     asset_id: "sp500"
-    sma_fast: 10                    # semanas (solo contexto)
+    sma_fast: 10                    # semanas: reentrada rápida tras una salida de emergencia
     sma_slow: 40                    # semanas: la media que decide
     slope_weeks: 4                  # bajista = cierre bajo la SMA40 y SMA40 más baja que hace 4 semanas
     enter_band_pct: 1.0             # entrar con un cierre semanal >1% sobre la SMA40
     vix_emergency: 35               # emergencia: VIX semanal > 35 con el cierre bajo la SMA40 → salir sin esperar
     panic_week_drop_pct: 3.5        # semana estirada (caída ≥3,5% o RSI14 < 30): la salida bajista se aplaza una semana
     panic_rsi: 30
+    fast_reentry_after_emergency: true  # tras una emergencia, entrar también con un cierre > SMA10
     dd_window: 25                   # contexto: sesiones para contar días de distribución
     dd_drop_pct: 0.2                # día de distribución: caída ≥ 0,2% con más volumen que la sesión anterior
     dd_reduce: 7                    # con el volumen de SPY la mediana es 5: el aviso empieza en 7

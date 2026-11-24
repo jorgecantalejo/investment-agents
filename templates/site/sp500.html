@@ -67,7 +67,7 @@
     </tr>
     {% endfor %}
   </table></div>
-  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">Las filas 1 a 4 son la regla. Las de contexto no dan órdenes: el volumen diario es demasiado nervioso para mover un fondo con traspasos que tardan días.</p>
+  <p class="small faint" style="margin:0; padding:10px 14px; border-top:1px solid var(--border)">Las filas 1 a 5 son la regla. Las de contexto no dan órdenes: el volumen diario es demasiado nervioso para mover un fondo con traspasos que tardan días.</p>
 </div>
 <details class="panel" style="margin-top:12px"><summary>Días de distribución en las últimas {{ prm.dd_window }} sesiones ({{ r.distribution_days | length }})</summary>
   {% if r.distribution_days %}
@@ -114,7 +114,8 @@
     <li><b>Salida bajista.</b> Si el cierre está bajo la SMA{{ prm.sma_slow }}s y la media es más baja que hace {{ prm.slope_weeks }} semanas: traspaso total al monetario. Cubre los mercados bajistas lentos (2000-02, 2008, 2022).</li>
     <li><b>Anti-pánico.</b> Si en la semana de la salida bajista el índice cae ≥ {{ prm.panic_week_drop_pct }}% o el RSI{{ prm.rsi_window }} diario está bajo {{ prm.panic_rsi }}, la salida se aplaza al viernes siguiente (una sola vez), para no vender en el suelo del rebote técnico.</li>
     <li><b>Entrada.</b> Fuera del mercado, un cierre más de un {{ prm.enter_band_pct }}% por encima de la SMA{{ prm.sma_slow }}s: traspaso total al fondo.</li>
-    <li><b>El volumen no da órdenes.</b> Días de distribución, CMF, OBV y el cruce SMA{{ prm.sma_fast }}/{{ prm.sma_slow }} se muestran como contexto.</li>
+    <li><b>Reentrada rápida tras una emergencia.</b> Si la salida fue de emergencia, también se vuelve a entrar con un cierre semanal sobre la SMA{{ prm.sma_fast }}s: tras un pánico la SMA{{ prm.sma_slow }}s queda muy arriba y esperarla deja fuera de las caídas en V.</li>
+    <li><b>El volumen no da órdenes.</b> Días de distribución, CMF y OBV se muestran como contexto.</li>
   </ol>
   <p class="faint" style="margin:6px 0 0">Documento completo con checklist, protocolo de excepciones y script para TradingView: <a href="https://github.com/jorgecantalejo/investment-agents/blob/main/estrategias/sp500_regimen.md" target="_blank" rel="noopener">estrategias/sp500_regimen.md</a>.</p>
 </div>

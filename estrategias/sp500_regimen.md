@@ -23,7 +23,10 @@ ser **0 % o 100 %** del capital asignado.
 3. **Salida de emergencia para desplomes rápidos.** Si el VIX cierra la semana por encima de 35 con el cierre bajo la
    media, se sale sin esperar. Es un seguro para caídas como la de marzo de 2020, cuando la media seguía subiendo.
 4. **Volver a entrar con un cierre semanal más de un 1 % sobre la media.**
-5. **Solo cuentan los cierres semanales.** El volumen, el CMF, el OBV y el cruce SMA10/SMA40 son solo contexto.
+5. **Reentrada rápida tras una emergencia.** Si la salida fue de emergencia, también se vuelve a entrar con un cierre
+   semanal sobre la media de 10 semanas. Tras un pánico la SMA40 queda muy arriba y esperarla deja fuera de las caídas
+   en V (en 2020 se recompró el 17-abr en lugar del 29-may).
+6. **Solo cuentan los cierres semanales.** El volumen, el CMF y el OBV son solo contexto.
 
 ### Cómo se llegó aquí
 
@@ -32,7 +35,8 @@ ser **0 % o 100 %** del capital asignado.
 | 0/50/100 % con flujo institucional y FTD | +7,4 % | −28 % | 6,5 | Peor que la SMA40 sola |
 | SMA40 con banda −1,5 % / +1 % | +9,8 % | −20 % | 1,8 | Neta de impuestos, rinde menos que comprar y mantener |
 | Solo bajista, sin emergencia | +11,7 % | −34 % | 1,0 | Se comió entera la caída de 2020 |
-| **Solo bajista + emergencia VIX > 35** | **+11,3 %** | **−21 %** | **1,1** | — |
+| Solo bajista + emergencia VIX > 35 | +11,3 % | −21 % | 1,1 | En las V vendía abajo y recompraba arriba |
+| **+ reentrada rápida por la SMA10 tras una emergencia** | **+11,7 %** | **−19 %** | **1,4** | — |
 
 ---
 
@@ -44,6 +48,7 @@ ser **0 % o 100 %** del capital asignado.
 | `SMA40` | Media simple de los últimos 40 cierres semanales |
 | Media bajando | `SMA40` de esta semana < `SMA40` de hace 4 semanas |
 | `VIX` | Cierre del VIX en la misma sesión |
+| `SMA10` | Media simple de los últimos 10 cierres semanales |
 | Semana estirada | Caída semanal (`C` frente al cierre semanal anterior) ≥ 3,5 %, o RSI(14) diario de Wilder < 30 al cierre |
 | Línea de entrada | `SMA40 × 1,01` |
 
@@ -57,6 +62,7 @@ ser **0 % o 100 %** del capital asignado.
 | 2 | al 100 %, con una salida aplazada | `C < SMA40` y la media bajando | Traspaso total al monetario. Si no se cumple, la salida aplazada se anula |
 | 3 | al 100 % | `C < SMA40` y la media bajando | Si la semana está estirada: **aplazar** al viernes siguiente. Si no: traspaso total al monetario |
 | 4 | al 0 % | `C` > línea de entrada | Traspaso total al fondo |
+| 5 | al 0 %, tras una salida de **emergencia** | `C > SMA10` | Traspaso total al fondo (reentrada rápida) |
 
 Si no se cumple nada, no se hace nada. El aplazamiento se usa una sola vez: el viernes siguiente solo cuenta si sigue
 siendo bajista. Las aportaciones se mantienen al margen: la regla parte de un capital y no aporta más.
@@ -85,7 +91,8 @@ Todo está en la web (`sp500.html` → «Checklist del viernes») y en la tabla 
    - ¿Tenías una salida aplazada? Si SPY sigue bajo la SMA40 y la media baja → **sal**; si no, sigues dentro.
    - ¿SPY bajo la SMA40 y la media más baja que hace 4 semanas? Si la semana cayó ≥ 3,5 % o el RSI < 30 → **aplaza**;
      si no → **sal**.
-2. **Si estás al 0 %:** ¿SPY cierra por encima de la SMA40 + 1 %? → **entra**.
+2. **Si estás al 0 %:** ¿SPY cierra por encima de la SMA40 + 1 %? → **entra**. Si la salida fue de emergencia, ¿cierra
+   por encima de la SMA10? → **entra**.
 3. En cualquier otro caso, no hagas nada.
 
 ---
@@ -95,7 +102,7 @@ Todo está en la web (`sp500.html` → «Checklist del viernes») y en la tabla 
 Fichero: [`sp500_regimen.pine`](sp500_regimen.pine). Gráfico **semanal (1W)** de `AMEX:SPY` → Pine Editor → pegar →
 «Añadir al gráfico».
 
-- SMA40s (naranja; roja cuando baja), línea de entrada (puntos verdes) y SMA10s como contexto.
+- SMA40s (naranja; roja cuando baja), línea de entrada (puntos verdes) y SMA10s (lila, reentrada rápida tras una emergencia).
 - Fondo verde = 100 %, rojo = 0 %; rombo naranja = salida aplazada; etiquetas con el motivo de cada cambio.
 - Tabla con el checklist del último viernes.
 - Alertas «Entrar al 100 %» y «Salir al 0 %» (frecuencia «Una vez por cierre de barra»).
@@ -114,7 +121,8 @@ al final:
 
 | | Neto final | Máx. caída | Caída en 2020 | Traspasos |
 |---|---:|---:|---:|---:|
-| **Solo bajista + emergencia VIX > 35** | **29.975 €** | −20 % | −12 % | 37 |
+| **Solo bajista + emergencia + reentrada rápida (esta)** | **34.022 €** | −19 % | −12 % | 45 |
+| Solo bajista + emergencia, sin reentrada rápida | 30.143 € | −20 % | −12 % | 37 |
 | Solo bajista, sin emergencia | 32.154 € | −34 % | −34 % | 32 |
 | SMA40 con banda −1,5 / +1 | 19.637 € | −20 % | −11 % | 59 |
 | Comprar y mantener | 22.151 € | −55 % | −34 % | 0 |
@@ -140,6 +148,11 @@ Lo que dicen los datos:
 - **Por qué no se puede prever un desplome como el de 2020:** el viernes anterior el índice estaba un 10 % sobre su
   media, con el VIX en 17. Ninguna regla semanal lo anticipa; lo que se consigue es reaccionar tras la primera semana
   de pánico.
+- **La reentrada rápida depende de la media elegida:** con la SMA10 o la SMA13 suma unos 4.000 € netos, con la SMA20
+  queda igual y con la SMA5 o SMA8 resta unos 2.000 €. También genera más idas y vueltas: en 2020 hubo tres salidas y tres
+  entradas, porque el VIX siguió alto y volvió a saltar la emergencia.
+- **Esperar al rebote para vender no funciona:** en 2020 no hubo ningún rebote hasta el suelo, y en las V (1998, 2011,
+  2025) el primer rebote suele volver a caer antes de subir, así que se vende igual, más tarde.
 - **Las caídas muy rápidas sin pánico de VIX no se evitan:** en 1998 la caída fue completa antes de cualquier señal.
 - **Sesgo de ajuste:** las reglas se eligieron mirando este histórico. Los umbrales vecinos (pendiente de 1 a 13
   semanas, VIX 35-40, caída semanal 3-5 %, RSI 25-35) dan resultados parecidos, pero el resultado es optimista.

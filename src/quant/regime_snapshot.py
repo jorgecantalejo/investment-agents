@@ -65,7 +65,7 @@ def weeks_below(weekly: pd.DataFrame) -> int:
     return count
 
 
-def build_checks(r: Readings, cfg: RegimeStrategyConfig, p: RegimeParams, below: int, exposure: int, deferred: bool) -> list[RegimeCheck]:
+def build_checks(r: Readings, cfg: RegimeStrategyConfig, p: RegimeParams, below: int, exposure: int, mode: str) -> list[RegimeCheck]:
     slow = f"SMA{cfg.sma_slow}"
     slope_pct = (r.sma_slow / r.sma_slow_prev - 1) * 100
     vix_status = "na" if r.vix is None else ("alerta" if r.emergency(p) else ("aviso" if r.vix > p.vix_emergency else "ok"))
@@ -88,16 +88,17 @@ def build_checks(r: Readings, cfg: RegimeStrategyConfig, p: RegimeParams, below:
             value=f"{'—' if r.week_ret is None else f'{r.week_ret * 100:+.1f}%'} · RSI {_fmt(r.rsi, 0)}",
             rule=f"Caída ≥ {cfg.panic_week_drop_pct:g}% o RSI < {cfg.panic_rsi:g} → la salida bajista se aplaza al viernes siguiente (una vez)",
             status="aviso" if r.stretched(p) else "ok",
-            note="salida aplazada: se decide el próximo viernes" if deferred else ""),
+            note="salida aplazada: se decide el próximo viernes" if mode == "aplazada" else ""),
         RegimeCheck(
             id="entry", label=f"4 · Entrada: cierre frente a la {slow}s +{cfg.enter_band_pct:g}%",
             value=f"{_fmt(r.close)} / {_fmt(r.enter_line(p))}", rule=f"Fuera del mercado: cierre > {_fmt(r.enter_line(p))} → entrar",
             status=("ok" if r.close > r.enter_line(p) else "aviso") if exposure == 0 else ("ok" if r.close > r.sma_slow else "aviso"),
             note="" if exposure == 0 else "solo cuenta cuando se está fuera"),
         RegimeCheck(
-            id="cross", label=f"Contexto · SMA{cfg.sma_fast}s frente a {slow}s",
-            value=f"{_fmt(r.sma_fast)} / {_fmt(r.sma_slow)}", rule="Solo contexto: el cruce confirma el régimen pero llega tarde",
-            status="ok" if r.sma_fast > r.sma_slow else "aviso"),
+            id="fast_entry", label=f"5 · Reentrada rápida tras una emergencia: cierre frente a la SMA{cfg.sma_fast}s",
+            value=f"{_fmt(r.close)} / {_fmt(r.sma_fast)}", rule=f"Fuera tras una salida de emergencia: cierre > SMA{cfg.sma_fast}s → entrar",
+            status=("ok" if r.close > r.sma_fast else "aviso") if mode == "emergencia" else "na",
+            note="activa: la última salida fue de emergencia" if mode == "emergencia" else "solo cuenta tras una salida de emergencia"),
         RegimeCheck(
             id="dd", label=f"Contexto · días de distribución en {cfg.dd_window} sesiones",
             value=str(r.dd25), rule=f"Solo contexto · ≤ {cfg.dd_aligned_max} sano · ≥ {cfg.dd_reduce} vigilar (caída ≥ {cfg.dd_drop_pct:g}% con más volumen)",
@@ -157,6 +158,9 @@ def _explain(res: RegimeStrategyResult, cfg: RegimeStrategyConfig) -> list[str]:
     if res.deferred:
         lines.append(f"Salida bajista aplazada por semana de pánico: el próximo viernes se sale si el cierre sigue bajo la SMA{cfg.sma_slow}s "
                      "y la media sigue bajando.")
+    if res.after_emergency:
+        lines.append(f"La salida fue de emergencia: también se vuelve a entrar con un cierre semanal por encima de la SMA{cfg.sma_fast}s "
+                     f"({_fmt(res.sma_fast)}), sin esperar a la SMA{cfg.sma_slow}s.")
     if res.exposure == 100:
         lines.append(f"Se saldría con un cierre semanal bajo la SMA{cfg.sma_slow}s ({_fmt(res.sma_slow)}) si la media baja, o de inmediato "
                      f"si además el VIX cierra la semana por encima de {cfg.vix_emergency:g}.")
@@ -220,7 +224,7 @@ def _evaluate(base: RegimeStrategyResult, cfg: RegimeStrategyConfig, ohlcv: pd.D
     changed = last_switch is not None and last_switch.date == rep.last_decision
     provisional, provisional_reasons = rep.exposure, []
     if not complete:
-        provisional, _, provisional_reasons = decide(rep.exposure, rep.deferred, r, p)
+        provisional, _, provisional_reasons = decide(rep.exposure, rep.mode, r, p)
 
     window = daily.iloc[-cfg.dd_window:]
     dd_days = [FlowDay(date=ts.strftime("%Y-%m-%d"), change_pct=round(float(row["ret"]) * 100, 2),
@@ -244,9 +248,9 @@ def _evaluate(base: RegimeStrategyResult, cfg: RegimeStrategyConfig, ohlcv: pd.D
         last_date=daily.index[-1].strftime("%Y-%m-%d"), last_close=round(float(daily["close"].iloc[-1]), 2),
         sma_fast=round(r.sma_fast, 2), sma_slow=round(r.sma_slow, 2), sma_slow_prev=round(r.sma_slow_prev, 2),
         enter_line=round(r.enter_line(p), 2), gap_pct=round(r.gap_pct, 2),
-        week_ret_pct=None if r.week_ret is None else round(r.week_ret * 100, 2), rsi=round_or_none(r.rsi, 1), deferred=rep.deferred, trend=trend_label(r), dd25=r.dd25, distribution_days=dd_days,
+        week_ret_pct=None if r.week_ret is None else round(r.week_ret * 100, 2), rsi=round_or_none(r.rsi, 1), deferred=rep.mode == "aplazada", after_emergency=rep.mode == "emergencia", trend=trend_label(r), dd25=r.dd25, distribution_days=dd_days,
         cmf=round(r.cmf, 4), obv_divergence=r.obv_div, vix=round_or_none(r.vix, 2),
-        checks=build_checks(r, cfg, p, weeks_below(weekly), rep.exposure, rep.deferred),
+        checks=build_checks(r, cfg, p, weeks_below(weekly), rep.exposure, rep.mode),
         switches=[RegimeSwitch(date=s.date.strftime("%Y-%m-%d"), from_pct=s.from_pct, to_pct=s.to_pct, reasons=s.reasons) for s in rep.switches],
         switches_per_year=round(len(rep.switches) / years, 1) if years > 0 else None, since=rep.first_valid.strftime("%Y-%m-%d"),
         perf={k: RegimePerf(**v) for k, v in perf.items()}, episodes=drawdown_episodes(daily, exposures, rep.first_valid),

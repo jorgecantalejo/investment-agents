@@ -172,7 +172,7 @@ los informes y muestra el resumen.
 Exposición 0/100% entre un fondo indexado al S&P 500 y un monetario en EUR, decidida solo con el cierre semanal de SPY:
 se sale si el cierre está bajo la SMA de 40 semanas y la media baja (aplazando una semana si la semana fue de pánico), o
 de inmediato si el VIX cierra la semana por encima de 35 con el cierre bajo la media; se vuelve a entrar con un cierre
-más de un 1% sobre la media. Volumen, CMF, OBV y el cruce SMA10/40 son solo contexto. Configuración en
+más de un 1% sobre la media, o sobre la SMA de 10 semanas si la salida fue de emergencia. Volumen, CMF y OBV son solo contexto. Configuración en
 `regime_strategies.sp500_regime`; reglas, checklist del viernes, protocolo ante un desplome, resultados y limitaciones en
 [`estrategias/sp500_regimen.md`](estrategias/sp500_regimen.md); indicador de TradingView en `estrategias/sp500_regimen.pine`.
 Se calcula al generar la web (`--site`).

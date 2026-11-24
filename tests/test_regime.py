@@ -49,44 +49,54 @@ def test_cmf_sign_follows_close_location():
 
 def test_below_rising_average_is_not_bear():
     # Cierre bajo la SMA40 pero con la media aún subiendo: se sigue dentro, aunque el flujo sea malo
-    assert decide(100, False, readings(close=95, dd25=12, cmf=-0.3, obv_div=True), P) == (100, False, [])
+    assert decide(100, "normal", readings(close=95, dd25=12, cmf=-0.3, obv_div=True), P) == (100, "normal", [])
 
 
 def test_bear_exit():
-    new, deferred, reasons = decide(100, False, readings(close=95, sma_slow_prev=101), P)
-    assert (new, deferred) == (0, False) and "mercado bajista" in reasons[0]
+    new, deferred, reasons = decide(100, "normal", readings(close=95, sma_slow_prev=101), P)
+    assert (new, deferred) == (0, "normal") and "mercado bajista" in reasons[0]
 
 
 def test_stretched_week_defers_bear_exit_once():
     bear_panic = readings(close=95, sma_slow_prev=101, week_ret=-0.05, rsi=40.0)
-    assert decide(100, False, bear_panic, P) == (100, True, [])
-    assert decide(100, False, readings(close=95, sma_slow_prev=101, rsi=25.0), P) == (100, True, [])
+    assert decide(100, "normal", bear_panic, P) == (100, "aplazada", [])
+    assert decide(100, "normal", readings(close=95, sma_slow_prev=101, rsi=25.0), P) == (100, "aplazada", [])
     # El viernes siguiente sale si sigue bajista, aunque vuelva a estar estirado
-    new, deferred, reasons = decide(100, True, bear_panic, P)
-    assert (new, deferred) == (0, False) and "aplazada" in reasons[0]
+    new, deferred, reasons = decide(100, "aplazada", bear_panic, P)
+    assert (new, deferred) == (0, "normal") and "aplazada" in reasons[0]
     # Y se queda si ha recuperado la media
-    assert decide(100, True, readings(close=102, sma_slow_prev=101), P) == (100, False, [])
+    assert decide(100, "aplazada", readings(close=102, sma_slow_prev=101), P) == (100, "normal", [])
 
 
 def test_vix_emergency_exits_without_waiting():
     # Media subiendo y semana de pánico: sin emergencia no saldría
     crash = readings(close=95, week_ret=-0.11, rsi=20.0, vix=40.0)
-    new, _, reasons = decide(100, False, crash, P)
-    assert new == 0 and "emergencia" in reasons[0]
+    new, mode, reasons = decide(100, "normal", crash, P)
+    assert (new, mode) == (0, "emergencia") and "emergencia" in reasons[0]
     # VIX alto con el cierre aún sobre la media: no hay emergencia
-    assert decide(100, False, readings(vix=40.0), P)[0] == 100
+    assert decide(100, "normal", readings(vix=40.0), P)[0] == 100
     # Sin VIX la emergencia queda desactivada
-    assert decide(100, False, readings(close=95, week_ret=-0.11, vix=None), P)[0] == 100
+    assert decide(100, "normal", readings(close=95, week_ret=-0.11, vix=None), P)[0] == 100
 
 
 def test_entry_needs_band():
-    assert decide(0, False, readings(close=100.9), P)[0] == 0
-    new, _, reasons = decide(0, False, readings(close=101.1), P)
+    assert decide(0, "normal", readings(close=100.9), P)[0] == 0
+    new, _, reasons = decide(0, "normal", readings(close=101.1), P)
     assert new == 100 and "línea de entrada" in reasons[0]
 
 
+def test_fast_reentry_only_after_emergency():
+    v_rebound = readings(close=97, sma_fast=95)  # sobre la SMA10, aún bajo la SMA40
+    new, mode, reasons = decide(0, "emergencia", v_rebound, P)
+    assert (new, mode) == (100, "normal") and "reentrada rápida" in reasons[0]
+    assert decide(0, "emergencia", readings(close=94, sma_fast=95), P) == (0, "emergencia", [])
+    # Tras una salida bajista normal, la SMA10 no basta
+    assert decide(0, "normal", v_rebound, P)[0] == 0
+    assert decide(0, "emergencia", v_rebound, RegimeParams(fast_reentry_after_emergency=False))[0] == 0
+
+
 def test_flow_context_never_trades():
-    assert decide(100, False, readings(dd25=15, cmf=-0.5, obv_div=True), P)[0] == 100
+    assert decide(100, "normal", readings(dd25=15, cmf=-0.5, obv_div=True), P)[0] == 100
 
 
 def test_weekly_frame_slope_and_week_return():
@@ -137,7 +147,7 @@ def test_build_regime_strategy_uptrend():
     res = build_regime_strategy("sp500_regime", regime_cfg(), FakeService(ohlcv(close, list(rng.uniform(900, 1100, 400)))), now=AFTER_CLOSE)
     assert res.error is None
     assert res.exposure == 100 and res.trend == "alcista"
-    assert {c.id for c in res.checks} == {"emergency", "trend", "panic", "entry", "cross", "dd", "cmf", "obv"}
+    assert {c.id for c in res.checks} == {"emergency", "trend", "panic", "entry", "fast_entry", "dd", "cmf", "obv"}
     assert res.sma_slow < res.enter_line and len(res.chart.enter_line) == len(res.chart.dates)
     assert next(c for c in res.checks if c.id == "emergency").status == "na"  # sin VIX la regla bajista sigue funcionando
     assert set(res.perf) == {"strategy", "sma_only", "buy_hold"}

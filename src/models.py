@@ -341,6 +341,7 @@ class RegimeStrategyResult(BaseModel):
     provisional_reasons: list[str] = Field(default_factory=list)
     week_complete: bool = True
     deferred: bool = Field(False, description="Salida bajista aplazada por semana de pánico: se decide el próximo viernes")
+    after_emergency: bool = Field(False, description="Fuera tras una salida de emergencia: vale la reentrada rápida por la SMA rápida")
     last_date: str | None = None
     last_close: float | None = None
     sma_fast: float | None = None

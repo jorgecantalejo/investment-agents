@@ -175,7 +175,7 @@ class RegimeStrategyConfig(_Strict):
     asset_id: str | None = Field(None, description="Activo al que acompaña (página de la web)")
     vehicle: str = Field("Fondo indexado S&P 500 ↔ fondo monetario EUR (traspasos)", description="Cómo se ejecuta")
     history_period: str = "max"
-    sma_fast: int = Field(10, ge=2, description="Media rápida en semanas (solo contexto)")
+    sma_fast: int = Field(10, ge=2, description="Media rápida en semanas (reentrada rápida tras una emergencia)")
     sma_slow: int = Field(40, ge=10, description="Media lenta en semanas: la que decide")
     slope_weeks: int = Field(4, ge=1, description="Mercado bajista: la media lenta está más baja que hace N semanas")
     enter_band_pct: float = Field(1.0, ge=0, le=10, description="Entrar al 100% si el cierre semanal queda este % sobre la media lenta")
@@ -183,6 +183,7 @@ class RegimeStrategyConfig(_Strict):
     panic_week_drop_pct: float = Field(3.5, gt=0, description="Semana estirada: caída semanal ≥ este %, aplaza una semana la salida bajista")
     panic_rsi: float = Field(30.0, gt=0, lt=100, description="Semana estirada: RSI diario por debajo")
     rsi_window: int = Field(14, ge=2)
+    fast_reentry_after_emergency: bool = Field(True, description="Tras una salida de emergencia, entrar también con un cierre sobre la SMA rápida")
     dd_window: int = Field(25, ge=5, description="Ventana de sesiones para contar días de distribución")
     dd_drop_pct: float = Field(0.2, gt=0, description="Caída mínima (%) de un día de distribución")
     dd_reduce: int = Field(7, ge=1, description="Días de distribución en la ventana que cuentan como aviso (contexto)")
